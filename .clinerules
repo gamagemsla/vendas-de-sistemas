@@ -1,0 +1,23 @@
+# Protocolo e Regras do Projeto Vendas B2B
+
+## 1. Autoridade Primária
+- Siga rigorosamente o protocolo em `AGENTS.md` e a arquitetura em `docs/architecture.md`.
+- Antes de iniciar qualquer tarefa, consulte os contratos definidos nesses dois documentos.
+
+## 2. Arquitetura Hexagonal Estrita (Sem Atalhos)
+- `domain`: Zero dependências externas (sem ORM, sem FastAPI, sem requests/httpx).
+- `application`: Depende APENAS de portas (interfaces/ABCs). Proibido importar `infrastructure`, SQLAlchemy `Session` ou ORM.
+- `interfaces`: Depende de `application` ou portas. PROIBIDO importar `infrastructure` diretamente.
+- `bootstrap`: Único local autorizado a acoplar implementações de `infrastructure` aos casos de uso.
+- ZERO TRAPAÇAS: É terminantemente proibido usar `importlib`, reflexão dinâmica ou hacks para burlar o `import-linter`.
+
+## 3. Qualidade e Tipagem
+- Mypy Strict: Zero erros. Proibido usar `# type: ignore` sem autorização expressa.
+- Ruff: Zero erros (use `Annotated[..., Depends(...)]` nos endpoints FastAPI para respeitar B008).
+- Data/Hora: NUNCA use `datetime.utcnow()` (depreciado no Python 3.12) nem `datetime.now()` cru. Toda manipulação temporal DEVE usar o port `Clock`.
+- Definição de Concluído (DoD): A tarefa só termina quando o comando `make check` rodar 100% verde (pytest, mypy, ruff, import-linter).
+
+## 4. Banco de Dados e Testes
+- Compatibilidade: Modelos e colunas devem ser agnósticos entre SQLite (testes) e PostgreSQL (produção). Nunca use tipos exclusivos sem TypeDecorator compatível.
+- Fixtures: Proibido recriar tabelas de forma destrutiva que colida com ENUMs no Postgres.
+- Nunca desative, comente ou pule testes (`skip`) para simular sucesso.

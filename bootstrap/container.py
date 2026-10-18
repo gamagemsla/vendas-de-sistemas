@@ -1,0 +1,1 @@
+from dependency_injector import containers, providers\nfrom domain.ports import CatalogRepository, KnowledgeBaseRepository\n\nclass Container(containers.DeclarativeContainer):\n wiring_config = containers.WiringConfiguration(modules=["__main__"])

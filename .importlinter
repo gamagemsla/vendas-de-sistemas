@@ -1,0 +1,44 @@
+[importlinter]
+root_package = vendas
+include_external_packages = true
+
+[importlinter:contract:domain-puro]
+name = Domain não depende de nada
+type = forbidden
+source_modules =
+    vendas.domain
+forbidden_modules =
+    vendas.application
+    vendas.infrastructure
+    vendas.interfaces
+    vendas.bootstrap
+    sqlalchemy
+    fastapi
+    streamlit
+    httpx
+
+[importlinter:contract:application-isolada]
+name = Application só conhece domain
+type = forbidden
+source_modules =
+    vendas.application
+forbidden_modules =
+    vendas.infrastructure
+    vendas.interfaces
+    vendas.bootstrap
+
+[importlinter:contract:infra-isolada]
+name = Infrastructure não conhece application nem interfaces
+type = forbidden
+source_modules =
+    vendas.infrastructure
+forbidden_modules =
+    vendas.application
+    vendas.interfaces
+
+[importlinter:contract:interfaces-sem-infra]
+name = Interfaces não importam infrastructure
+type = forbidden
+source_modules =
+    vendas.interfaces
+forbidden_modules = vendas.infrastructure

@@ -1,0 +1,30 @@
+# Ambiente Virtual
+.venv/
+env/
+venv/
+
+# Caches do Python e Linters
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+
+# Segredos e Configurações Locais (Regra 7 do AGENTS.md)
+.env
+*.env
+!.env.example
+
+# Bancos de dados locais e Caches
+*.sqlite3
+*.db
+chroma_db/
+data/
+logs/
+
+# IDEs e Ferramentas
+.vscode/
+.idea/
+.continue/
