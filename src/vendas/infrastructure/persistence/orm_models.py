@@ -823,17 +823,15 @@ class Booking(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     lead_id: Mapped[UUID] = mapped_column(
-        ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("leads.id", ondelete="CASCADE"), nullable=False
     )
-    scheduled_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
-    )
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    assigned_to: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
-    status: Mapped[str] = mapped_column(String(50), default="confirmed", nullable=False, index=True)
+    assigned_to: Mapped[UUID | None] = mapped_column(nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="confirmed", nullable=False)
     meeting_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

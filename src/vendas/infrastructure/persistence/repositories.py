@@ -190,7 +190,9 @@ class SQLAlchemyConversationRepository:
         """Salva/atualiza conversa existente."""
         model = self._session.query(ConversationModel).filter_by(id=entity.id).first()
         if model:
-            state_value = entity.state.value if hasattr(entity.state, "value") else str(entity.state)
+            state_value = (
+                entity.state.value if hasattr(entity.state, "value") else str(entity.state)
+            )
             model.state = state_value  # type: ignore[assignment]
             model.updated_at = datetime.utcnow()
 
@@ -299,6 +301,7 @@ class SQLAlchemyConversationRepository:
         if not model:
             return None
         from vendas.domain.entities.conversation import ConversationState
+
         return Conversation(
             id=model.id,
             lead_id=model.lead_id,
@@ -397,11 +400,12 @@ class SQLAlchemyOutboxRepository:
             query = query.filter(OutboxModel.channel.in_(channels))
 
         from sqlalchemy import case
+
         models = (
             query.order_by(
                 case(
                     (OutboxModel.scheduled_at.isnot(None), OutboxModel.scheduled_at),
-                    else_=OutboxModel.created_at
+                    else_=OutboxModel.created_at,
                 ).desc()
             )
             .limit(limit)
@@ -537,6 +541,7 @@ class SQLAlchemyBookingRepository:
 
     def list_upcoming(self, limit: int = 100) -> list[Booking]:
         from datetime import datetime
+
         now = datetime.now()
         models = (
             self._session.query(BookingModel)
@@ -657,12 +662,14 @@ class SQLAlchemySuppressionRepository:
 
     def is_suppressed(self, phone_e164: str) -> bool:
         from datetime import datetime
+
         now = datetime.now()
         model = (
             self._session.query(SuppressionListModel)
             .filter_by(phone_e164=phone_e164)
             .filter(
-                (SuppressionListModel.expires_at.is_(None)) | (SuppressionListModel.expires_at > now)
+                (SuppressionListModel.expires_at.is_(None))
+                | (SuppressionListModel.expires_at > now)
             )
             .first()
         )

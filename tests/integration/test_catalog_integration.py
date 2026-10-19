@@ -13,8 +13,10 @@ from vendas.application.commands.catalog import (
     UpdatePriceCommand,
 )
 from vendas.bootstrap.settings import settings
+from vendas.domain.ports import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
 from vendas.infrastructure.persistence.base import Base
+from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 from vendas.infrastructure.persistence.orm_models import AuditLog, KnowledgeChangeLog
 from vendas.interfaces.api.app import app
 
@@ -32,11 +34,21 @@ def _make_session() -> Session:
     return SessionLocal()
 
 
+def _make_catalog_repo(session: Session) -> SqlAlchemyCatalogRepository:
+    clock = SystemClock()
+    return SqlAlchemyCatalogRepository(session, clock)
+
+
+def _make_clock() -> SystemClock:
+    return SystemClock()
+
+
 def test_price_update_refreshes_knowledge_base_and_excludes_old_window() -> None:
     session = _make_session()
+    catalog_repo = _make_catalog_repo(session)
+    clock = _make_clock()
     try:
-        service = CreateServiceCommand().execute(
-            session,
+        service = CreateServiceCommand(catalog_repo, clock).execute(
             name=f"Atendimento KB {uuid4()}",
             description="Catalog integration",
             actor_id="admin-1",
@@ -44,8 +56,7 @@ def test_price_update_refreshes_knowledge_base_and_excludes_old_window() -> None
         )
         now = datetime.now(UTC)
 
-        old_price = CreatePriceCommand().execute(
-            session,
+        old_price = CreatePriceCommand(catalog_repo, clock).execute(
             service_id=service.id,
             price_cents=900,
             valid_from=now - timedelta(days=15),
@@ -53,8 +64,7 @@ def test_price_update_refreshes_knowledge_base_and_excludes_old_window() -> None
             actor_id="admin-1",
             actor_role="admin",
         )
-        current_price = CreatePriceCommand().execute(
-            session,
+        current_price = CreatePriceCommand(catalog_repo, clock).execute(
             service_id=service.id,
             price_cents=1500,
             valid_from=now - timedelta(days=2),
@@ -66,8 +76,7 @@ def test_price_update_refreshes_knowledge_base_and_excludes_old_window() -> None
 
         kb = SqlAlchemyKnowledgeBase(session)
         kb.invalidate()
-        UpdatePriceCommand().execute(
-            session,
+        UpdatePriceCommand(catalog_repo, clock).execute(
             price_id=current_price.id,
             price_cents=2500,
             valid_from=now - timedelta(days=1),
@@ -89,16 +98,16 @@ def test_price_update_refreshes_knowledge_base_and_excludes_old_window() -> None
 
 def test_changes_write_knowledge_and_audit_logs() -> None:
     session = _make_session()
+    catalog_repo = _make_catalog_repo(session)
+    clock = _make_clock()
     try:
-        service = CreateServiceCommand().execute(
-            session,
+        service = CreateServiceCommand(catalog_repo, clock).execute(
             name=f"Servico Log {uuid4()}",
             description="Log test",
             actor_id="admin-1",
             actor_role="admin",
         )
-        price = CreatePriceCommand().execute(
-            session,
+        price = CreatePriceCommand(catalog_repo, clock).execute(
             service_id=service.id,
             price_cents=1200,
             valid_from=datetime.now(UTC),
@@ -108,8 +117,7 @@ def test_changes_write_knowledge_and_audit_logs() -> None:
         )
         session.commit()
 
-        UpdatePriceCommand().execute(
-            session,
+        UpdatePriceCommand(catalog_repo, clock).execute(
             price_id=price.id,
             price_cents=1800,
             valid_from=datetime.now(UTC),
