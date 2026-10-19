@@ -1,9 +1,8 @@
-from logging.config import fileConfig
 import sys
+from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -11,10 +10,10 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # Import settings to get DATABASE_URL
-from vendas.bootstrap.settings import get_settings  # noqa: E402
+from vendas.bootstrap.settings import get_settings
 
 # Import Base metadata for autogenerate support
-from vendas.infrastructure.persistence.base import Base  # noqa: E402
+from vendas.infrastructure.persistence.base import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

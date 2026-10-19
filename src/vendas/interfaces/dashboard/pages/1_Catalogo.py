@@ -35,7 +35,9 @@ with st.expander("Cadastrar Novo Serviço / Produto", expanded=False):
             "discount_allowed": discount_ok,
         }
         try:
-            response = httpx.post(f"{API_BASE_URL}/catalog/services", json=payload, headers=HEADERS, timeout=10)
+            response = httpx.post(
+                f"{API_BASE_URL}/catalog/services", json=payload, headers=HEADERS, timeout=10
+            )
             response.raise_for_status()
             st.success(f"Serviço '{service_name}' cadastrado com sucesso!")
             st.rerun()
@@ -43,7 +45,9 @@ with st.expander("Cadastrar Novo Serviço / Produto", expanded=False):
             st.error(f"Falha ao criar serviço: {exc}")
 
 st.markdown("### Pré-visualização da Knowledge Base")
-question = st.text_input("Pergunta / contexto da IA", placeholder="Ex.: quero saber o valor do plano premium")
+question = st.text_input(
+    "Pergunta / contexto da IA", placeholder="Ex.: quero saber o valor do plano premium"
+)
 if question:
     try:
         response = httpx.post(
@@ -71,7 +75,7 @@ if not items:
 else:
     for item in items:
         st.markdown(f"### {item.get('name', 'Serviço')}")
-        st.caption(item.get('description') or "Sem descrição detalhada.")
+        st.caption(item.get("description") or "Sem descrição detalhada.")
         st.write(
             f"Categoria: {item.get('category') or 'Geral'} | "
             f"Regras: IA={'autônoma' if not item.get('requires_human_approval') else 'humana'} | "

@@ -5,9 +5,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports import Clock
-from vendas.domain.ports.knowledge_base import KnowledgeBasePort
+from vendas.domain.ports.catalog import CatalogRepository
 
 
 class CatalogValidationError(ValueError):
@@ -22,7 +21,7 @@ class CatalogMutation:
     old_value: dict[str, Any] | None
     new_value: dict[str, Any] | None
     actor_id: str | None = None
-    actor_role: str = 'admin'
+    actor_role: str = "admin"
 
 
 class CreateServiceCommand:
@@ -34,15 +33,15 @@ class CreateServiceCommand:
         self,
         *,
         name: str,
-        description: str = '',
+        description: str = "",
         category: str | None = None,
         requires_human_approval: bool = False,
         discount_allowed: bool = False,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         if not name.strip():
-            raise CatalogValidationError('Nome do serviço é obrigatório')
+            raise CatalogValidationError("Nome do serviço é obrigatório")
 
         return self._catalog_repo.add_service(
             name=name.strip(),
@@ -50,7 +49,7 @@ class CreateServiceCommand:
             category=category,
             requires_human_approval=requires_human_approval,
             discount_allowed=discount_allowed,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -68,14 +67,14 @@ class UpdateServiceCommand:
         description: str | None = None,
         category: str | None = None,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         return self._catalog_repo.update_service(
             service_id=service_id,
             name=name,
             description=description,
             category=category,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -92,13 +91,13 @@ class UpdateServiceRulesCommand:
         requires_human_approval: bool | None = None,
         discount_allowed: bool | None = None,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         return self._catalog_repo.update_service_rules(
             service_id=service_id,
             requires_human_approval=requires_human_approval,
             discount_allowed=discount_allowed,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -113,11 +112,11 @@ class DeactivateServiceCommand:
         *,
         service_id: UUID,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         return self._catalog_repo.deactivate_service(
             service_id=service_id,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -135,19 +134,22 @@ class CreatePriceCommand:
         valid_from: datetime,
         valid_to: datetime | None = None,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         if price_cents <= 0:
-            raise CatalogValidationError('Preço deve ser maior que zero')
+            raise CatalogValidationError("Preço deve ser maior que zero")
 
-        return self._catalog_repo.add_price(
-            service_id=service_id,
-            price_cents=price_cents,
-            valid_from=valid_from,
-            valid_to=valid_to,
-            actor_id=actor_id or 'system',
-            actor_role=actor_role,
-        )
+        try:
+            return self._catalog_repo.add_price(
+                service_id=service_id,
+                price_cents=price_cents,
+                valid_from=valid_from,
+                valid_to=valid_to,
+                actor_id=actor_id or "system",
+                actor_role=actor_role,
+            )
+        except ValueError as exc:
+            raise CatalogValidationError(str(exc)) from exc
 
 
 class UpdatePriceCommand:
@@ -163,19 +165,22 @@ class UpdatePriceCommand:
         valid_from: datetime | None = None,
         valid_to: datetime | None = None,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         if price_cents is not None and price_cents <= 0:
-            raise CatalogValidationError('Preço deve ser maior que zero')
+            raise CatalogValidationError("Preço deve ser maior que zero")
 
-        return self._catalog_repo.update_price(
-            price_id=price_id,
-            price_cents=price_cents,
-            valid_from=valid_from,
-            valid_to=valid_to,
-            actor_id=actor_id or 'system',
-            actor_role=actor_role,
-        )
+        try:
+            return self._catalog_repo.update_price(
+                price_id=price_id,
+                price_cents=price_cents,
+                valid_from=valid_from,
+                valid_to=valid_to,
+                actor_id=actor_id or "system",
+                actor_role=actor_role,
+            )
+        except ValueError as exc:
+            raise CatalogValidationError(str(exc)) from exc
 
 
 class DeactivatePriceCommand:
@@ -188,11 +193,11 @@ class DeactivatePriceCommand:
         *,
         price_id: UUID,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         return self._catalog_repo.deactivate_price(
             price_id=price_id,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -209,16 +214,16 @@ class CreateFaqCommand:
         question: str,
         answer: str,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         if not question.strip() or not answer.strip():
-            raise CatalogValidationError('Pergunta e resposta são obrigatórias')
+            raise CatalogValidationError("Pergunta e resposta são obrigatórias")
 
         return self._catalog_repo.add_faq(
             service_id=service_id,
             question=question.strip(),
             answer=answer.strip(),
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -235,13 +240,13 @@ class UpdateFaqCommand:
         question: str | None = None,
         answer: str | None = None,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         return self._catalog_repo.update_faq(
             faq_id=faq_id,
             question=question,
             answer=answer,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )
 
@@ -256,10 +261,10 @@ class DeactivateFaqCommand:
         *,
         faq_id: UUID,
         actor_id: str | None = None,
-        actor_role: str = 'admin',
+        actor_role: str = "admin",
     ) -> Any:
         return self._catalog_repo.deactivate_faq(
             faq_id=faq_id,
-            actor_id=actor_id or 'system',
+            actor_id=actor_id or "system",
             actor_role=actor_role,
         )

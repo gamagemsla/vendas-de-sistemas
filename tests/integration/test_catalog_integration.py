@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -119,7 +119,9 @@ def test_changes_write_knowledge_and_audit_logs() -> None:
         )
         session.commit()
 
-        knowledge_logs = session.query(KnowledgeChangeLog).filter_by(entity_type="catalog_price").all()
+        knowledge_logs = (
+            session.query(KnowledgeChangeLog).filter_by(entity_type="catalog_price").all()
+        )
         audit_logs = session.query(AuditLog).filter_by(entity_type="catalog_price").all()
         assert len(knowledge_logs) >= 2
         assert len(audit_logs) >= 2

@@ -10,8 +10,8 @@ from vendas.bootstrap.settings import settings
 from vendas.domain.ports import Clock, SystemClock
 from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
-from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
+from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 
 
 class Container:
@@ -32,14 +32,16 @@ class Container:
         self.ConversationState = orm_models.ConversationState
         self.LeadModel = orm_models.LeadModel
 
+        # Ports implementations
+        self.clock: Clock = SystemClock()
+
         unit_of_work_module = importlib.import_module(
             "vendas.infrastructure.persistence.unit_of_work"
         )
-        self.uow = unit_of_work_module.SQLAlchemyUnitOfWork(self.session_factory)
-
-        # Ports implementations
-        self.clock: Clock = SystemClock()
-        self.catalog_repository_factory = lambda session: SqlAlchemyCatalogRepository(session, self.clock)
+        self.uow = unit_of_work_module.SQLAlchemyUnitOfWork(self.session_factory, self.clock)
+        self.catalog_repository_factory = lambda session: SqlAlchemyCatalogRepository(
+            session, self.clock
+        )
         self.knowledge_base_factory = lambda session: SqlAlchemyKnowledgeBase(session)
 
     def make_dashboard_query(self, session: Session) -> Any:
@@ -49,10 +51,10 @@ class Container:
         return dashboard_query_module.SqlAlchemyDashboardQuery(session)
 
     def get_catalog_repository(self, session: Session) -> CatalogRepository:
-        return self.catalog_repository_factory(session)
+        return SqlAlchemyCatalogRepository(session, self.clock)
 
     def get_knowledge_base(self, session: Session) -> KnowledgeBasePort:
-        return self.knowledge_base_factory(session)
+        return SqlAlchemyKnowledgeBase(session)
 
 
 container = Container()

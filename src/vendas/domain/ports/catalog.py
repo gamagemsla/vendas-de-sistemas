@@ -17,8 +17,7 @@ class CatalogRepository(Protocol):
         discount_allowed: bool,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
     def update_service(
         self,
@@ -28,8 +27,7 @@ class CatalogRepository(Protocol):
         category: str | None,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
     def update_service_rules(
         self,
@@ -38,11 +36,9 @@ class CatalogRepository(Protocol):
         discount_allowed: bool | None,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
-    def deactivate_service(self, service_id: UUID, actor_id: str, actor_role: str) -> Any:
-        ...
+    def deactivate_service(self, service_id: UUID, actor_id: str, actor_role: str) -> Any: ...
 
     def add_price(
         self,
@@ -52,8 +48,7 @@ class CatalogRepository(Protocol):
         valid_to: datetime | None,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
     def update_price(
         self,
@@ -63,11 +58,9 @@ class CatalogRepository(Protocol):
         valid_to: datetime | None,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
-    def deactivate_price(self, price_id: UUID, actor_id: str, actor_role: str) -> Any:
-        ...
+    def deactivate_price(self, price_id: UUID, actor_id: str, actor_role: str) -> Any: ...
 
     def add_faq(
         self,
@@ -76,8 +69,7 @@ class CatalogRepository(Protocol):
         answer: str,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
     def update_faq(
         self,
@@ -86,8 +78,6 @@ class CatalogRepository(Protocol):
         answer: str | None,
         actor_id: str,
         actor_role: str,
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
-    def deactivate_faq(self, faq_id: UUID, actor_id: str, actor_role: str) -> Any:
-        ...
+    def deactivate_faq(self, faq_id: UUID, actor_id: str, actor_role: str) -> Any: ...

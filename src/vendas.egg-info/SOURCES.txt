@@ -7,6 +7,7 @@ src/vendas.egg-info/requires.txt
 src/vendas.egg-info/top_level.txt
 src/vendas/application/__init__.py
 src/vendas/application/commands/__init__.py
+src/vendas/application/commands/catalog.py
 src/vendas/application/commands/enrich_lead.py
 src/vendas/application/commands/enroll_in_cadence.py
 src/vendas/application/commands/handle_inbound.py
@@ -14,13 +15,16 @@ src/vendas/application/commands/ingest_leads.py
 src/vendas/application/commands/process_cadence_step.py
 src/vendas/application/commands/schedule_meeting.py
 src/vendas/application/queries/__init__.py
+src/vendas/application/queries/catalog.py
 src/vendas/application/queries/overview_kpis.py
 src/vendas/bootstrap/__init__.py
+src/vendas/bootstrap/container.py
 src/vendas/bootstrap/logging.py
 src/vendas/bootstrap/settings.py
 src/vendas/domain/__init__.py
 src/vendas/domain/events.py
 src/vendas/domain/entities/__init__.py
+src/vendas/domain/entities/catalog.py
 src/vendas/domain/entities/lead.py
 src/vendas/domain/entities/py.typed
 src/vendas/domain/policies/__init__.py
@@ -31,7 +35,9 @@ src/vendas/domain/policies/opt_out_policy.py
 src/vendas/domain/policies/py.typed
 src/vendas/domain/policies/send_window_policy.py
 src/vendas/domain/ports/__init__.py
+src/vendas/domain/ports/catalog.py
 src/vendas/domain/ports/dashboard.py
+src/vendas/domain/ports/knowledge_base.py
 src/vendas/domain/ports/lead_source.py
 src/vendas/domain/ports/message_channel.py
 src/vendas/domain/ports/notifier.py
@@ -43,6 +49,7 @@ src/vendas/domain/value_objects/email.py
 src/vendas/domain/value_objects/money.py
 src/vendas/domain/value_objects/phone.py
 src/vendas/infrastructure/__init__.py
+src/vendas/infrastructure/knowledge_base.py
 src/vendas/infrastructure/channels/__init__.py
 src/vendas/infrastructure/channels/evolution_whatsapp.py
 src/vendas/infrastructure/channels/telegram_notifier.py
@@ -51,8 +58,8 @@ src/vendas/infrastructure/llm/__init__.py
 src/vendas/infrastructure/llm/gemini.py
 src/vendas/infrastructure/persistence/__init__.py
 src/vendas/infrastructure/persistence/base.py
+src/vendas/infrastructure/persistence/catalog_repository.py
 src/vendas/infrastructure/persistence/dashboard_queries.py
-src/vendas/infrastructure/persistence/fakes.py
 src/vendas/infrastructure/persistence/mappers.py
 src/vendas/infrastructure/persistence/orm_models.py
 src/vendas/infrastructure/persistence/repositories.py
@@ -66,6 +73,8 @@ src/vendas/infrastructure/queue/dispatcher.py
 src/vendas/infrastructure/queue/outbox.py
 src/vendas/interfaces/__init__.py
 src/vendas/interfaces/api/__init__.py
+src/vendas/interfaces/api/app.py
+src/vendas/interfaces/api/routes/catalog.py
 src/vendas/interfaces/api/routes/health.py
 src/vendas/interfaces/api/webhooks/whatsapp.py
 src/vendas/interfaces/dashboard/__init__.py

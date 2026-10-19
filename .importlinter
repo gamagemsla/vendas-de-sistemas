@@ -41,4 +41,11 @@ name = Interfaces não importam infrastructure
 type = forbidden
 source_modules =
     vendas.interfaces
-forbidden_modules = vendas.infrastructure
+forbidden_modules =
+    vendas.infrastructure
+    vendas.infrastructure.persistence
+    vendas.infrastructure.queue
+    vendas.infrastructure.external
+    vendas.infrastructure.persistence.catalog_repository
+ignore_imports =
+    vendas.interfaces.dashboard.main -> vendas.bootstrap.container

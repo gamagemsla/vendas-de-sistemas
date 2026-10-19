@@ -260,10 +260,16 @@ class CatalogPrice(Base):
     __tablename__ = "catalog_prices"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    service_id: Mapped[UUID] = mapped_column(ForeignKey("catalog_services.id"), nullable=False, index=True)
+    service_id: Mapped[UUID] = mapped_column(
+        ForeignKey("catalog_services.id"), nullable=False, index=True
+    )
     price_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    valid_to: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -288,7 +294,9 @@ class FaqEntry(Base):
     __tablename__ = "faq_entries"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    service_id: Mapped[UUID] = mapped_column(ForeignKey("catalog_services.id"), nullable=False, index=True)
+    service_id: Mapped[UUID] = mapped_column(
+        ForeignKey("catalog_services.id"), nullable=False, index=True
+    )
     question: Mapped[str] = mapped_column(String(255), nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -810,31 +818,46 @@ class AuditLog(Base):
         return f"AuditLog(id={self.id}, entity={self.entity_type}:{self.entity_id}, action={self.action.value})"
 
 
-class AgentDecision(Base):
-    __tablename__ = "agent_decisions"
+class Booking(Base):
+    __tablename__ = "bookings"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    lead_id: Mapped[UUID] = mapped_column(nullable=False, index=True)
-    decision_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    decision: Mapped[str] = mapped_column(String(50), nullable=False)
-    confidence: Mapped[float] = mapped_column(nullable=False)
-    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
-    context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    model_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    prompt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lead_id: Mapped[UUID] = mapped_column(
+        ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scheduled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_to: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="confirmed", nullable=False, index=True)
+    meeting_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    lead: Mapped[Lead] = relationship("Lead", lazy="selectin")
 
     __table_args__ = (
-        Index("ix_agent_decisions_lead", "lead_id"),
-        Index("ix_agent_decisions_type", "decision_type"),
-        Index("ix_agent_decisions_created", "created_at"),
+        Index("ix_bookings_scheduled_status", "scheduled_at", "status"),
+        Index("ix_bookings_lead_id", "lead_id"),
+        Index("ix_bookings_assigned_to", "assigned_to"),
     )
 
     def __repr__(self) -> str:
-        return f"AgentDecision(id={self.id}, lead_id={self.lead_id}, type={self.decision_type}, decision={self.decision})"
+        return f"Booking(id={self.id}, lead_id={self.lead_id}, scheduled_at={self.scheduled_at}, status={self.status})"
 
 
 # --- Aliases de compatibilidade para Mypy e Repositórios ---
@@ -857,4 +880,4 @@ KnowledgeChangeLogModel = KnowledgeChangeLog
 CatalogServiceModel = CatalogService
 CatalogPriceModel = CatalogPrice
 FaqEntryModel = FaqEntry
-AgentDecisionModel = AgentDecision
+BookingModel = Booking

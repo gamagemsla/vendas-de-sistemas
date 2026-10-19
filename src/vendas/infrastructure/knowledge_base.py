@@ -166,3 +166,6 @@ class SqlAlchemyKnowledgeBase:
             "faqs": self.find_faqs(text, at=now),
             "prices": self.find_prices(at=now),
         }
+
+    def list_services(self) -> list[dict[str, Any]]:
+        return self._active_services()

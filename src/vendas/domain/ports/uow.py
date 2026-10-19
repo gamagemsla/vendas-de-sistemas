@@ -1,6 +1,8 @@
 from types import TracebackType
 from typing import Any, Protocol, Self
+
 from vendas.domain.ports.catalog import CatalogRepository
+
 
 class UnitOfWork(Protocol):
     leads: Any
@@ -14,8 +16,12 @@ class UnitOfWork(Protocol):
 
     def __enter__(self) -> Self: ...
 
-    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:...
-    
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None: ...
 
     def commit(self) -> None: ...
 

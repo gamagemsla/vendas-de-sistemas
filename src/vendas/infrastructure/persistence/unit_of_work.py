@@ -1,26 +1,45 @@
 from types import TracebackType
-from typing import Any, Self
+from typing import Self
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from vendas.infrastructure.persistence.repositories import SQLAlchemyLeadRepository
+from vendas.domain.ports import Clock
+from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
+from vendas.infrastructure.persistence.repositories import (
+    SQLAlchemyBookingRepository,
+    SQLAlchemyConversationRepository,
+    SQLAlchemyEnrollmentRepository,
+    SQLAlchemyInboundEventRepository,
+    SQLAlchemyLeadRepository,
+    SQLAlchemySuppressionRepository,
+)
+from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository
 
 
 class SQLAlchemyUnitOfWork:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(self, session_factory: sessionmaker[Session], clock: Clock) -> None:
         self._session_factory = session_factory
+        self._clock = clock
         self.session: Session | None = None
         self.leads: SQLAlchemyLeadRepository | None = None
-        self.conversations: Any = None
-        self.outbox: Any = None
-        self.enrollments: Any = None
-        self.bookings: Any = None
-        self.inbound_events: Any = None
-        self.suppression: Any = None
+        self.conversations: SQLAlchemyConversationRepository | None = None
+        self.outbox: SQLAlchemyOutboxRepository | None = None
+        self.enrollments: SQLAlchemyEnrollmentRepository | None = None
+        self.bookings: SQLAlchemyBookingRepository | None = None
+        self.inbound_events: SQLAlchemyInboundEventRepository | None = None
+        self.suppression: SQLAlchemySuppressionRepository | None = None
+        self.catalog: SqlAlchemyCatalogRepository | None = None
 
     def __enter__(self) -> Self:
         self.session = self._session_factory()
         self.leads = SQLAlchemyLeadRepository(self.session)
+        self.conversations = SQLAlchemyConversationRepository(self.session)
+        self.outbox = SQLAlchemyOutboxRepository(self.session)
+        self.enrollments = SQLAlchemyEnrollmentRepository(self.session)
+        self.bookings = SQLAlchemyBookingRepository(self.session)
+        self.inbound_events = SQLAlchemyInboundEventRepository(self.session)
+        self.suppression = SQLAlchemySuppressionRepository(self.session)
+        self.catalog = SqlAlchemyCatalogRepository(self.session, self._clock)
         return self
 
     def __exit__(

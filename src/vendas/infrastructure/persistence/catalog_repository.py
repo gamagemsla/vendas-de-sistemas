@@ -6,14 +6,14 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports import Clock
+from vendas.domain.ports.catalog import CatalogRepository
 from vendas.infrastructure.persistence.orm_models import (
-    CatalogService,
+    AuditLog,
     CatalogPrice,
+    CatalogService,
     FaqEntry,
     KnowledgeChangeLog,
-    AuditLog,
 )
 
 
@@ -29,7 +29,7 @@ class SqlAlchemyCatalogRepository(CatalogRepository):
         self,
         *,
         entity_type: str,
-        entity_id: UUID,
+        entity_id: UUID | str,
         action: str,
         old_value: dict[str, Any] | None,
         new_value: dict[str, Any] | None,
@@ -38,11 +38,11 @@ class SqlAlchemyCatalogRepository(CatalogRepository):
     ) -> None:
         chg = KnowledgeChangeLog(
             entity_type=entity_type,
-            entity_id=entity_id,
+            entity_id=str(entity_id),
             action=action,
             old_value=old_value,
             new_value=new_value,
-            actor_id=UUID(actor_id) if actor_id else None,
+            actor_id=str(actor_id) if actor_id else None,
             actor_role=actor_role,
         )
         self._session.add(chg)
@@ -83,7 +83,7 @@ class SqlAlchemyCatalogRepository(CatalogRepository):
 
         self._log_change(
             entity_type="catalog_service",
-            entity_id=service.id,
+            entity_id=str(service.id),
             action="create",
             old_value=None,
             new_value={"name": service.name, "active": service.active},
@@ -124,7 +124,7 @@ class SqlAlchemyCatalogRepository(CatalogRepository):
 
         self._log_change(
             entity_type="catalog_service",
-            entity_id=service.id,
+            entity_id=str(service.id),
             action="update",
             old_value=old_val,
             new_value={
@@ -136,7 +136,8 @@ class SqlAlchemyCatalogRepository(CatalogRepository):
             actor_role=actor_role,
         )
         return service
-def update_service_rules(
+
+    def update_service_rules(
         self,
         service_id: UUID,
         requires_human_approval: bool | None,
@@ -162,7 +163,7 @@ def update_service_rules(
 
         self._log_change(
             entity_type="catalog_service",
-            entity_id=service.id,
+            entity_id=str(service.id),
             action="rules_update",
             old_value=old_val,
             new_value={
@@ -174,28 +175,6 @@ def update_service_rules(
         )
         return service
 
-    def deactivate_service(self, service_id: UUID, actor_id: str, actor_role: str) -> Any:
-        service = self._session.query(CatalogService).filter_by(id=service_id).first()
-        if not service:
-            raise ValueError("Serviço não encontrado")
-
-        old_val = {"active": service.active}
-        service.active = False
-        service.updated_at = self._now()
-        self._session.flush()
-
-        self._log_change(
-            entity_type="catalog_service",
-            entity_id=service.id,
-            action="deactivate",
-            old_value=old_val,
-            new_value={"active": False},
-            actor_id=actor_id,
-            actor_role=actor_role,
-        )
-        return service
-
-    # --- Prices ---
     def add_price(
         self,
         service_id: UUID,
@@ -208,6 +187,26 @@ def update_service_rules(
         service = self._session.query(CatalogService).filter_by(id=service_id).first()
         if not service:
             raise ValueError("Serviço não encontrado")
+
+        existing_prices = (
+            self._session.query(CatalogPrice).filter_by(service_id=service_id, active=True).all()
+        )
+        for ep in existing_prices:
+            ep_start = ep.valid_from
+            ep_end = ep.valid_to
+            new_start = valid_from
+            new_end = valid_to
+            if ep_start.tzinfo and not new_start.tzinfo:
+                new_start = new_start.replace(tzinfo=ep_start.tzinfo)
+            elif not ep_start.tzinfo and new_start.tzinfo:
+                ep_start = ep_start.replace(tzinfo=new_start.tzinfo)
+            if ep_end and ep_end.tzinfo and new_end and not new_end.tzinfo:
+                new_end = new_end.replace(tzinfo=ep_end.tzinfo)
+            elif ep_end and not ep_end.tzinfo and new_end and new_end.tzinfo:
+                ep_end = ep_end.replace(tzinfo=new_end.tzinfo)
+
+            if (ep_end is None or new_start <= ep_end) and (new_end is None or ep_start <= new_end):
+                raise ValueError("Janela de preço sobreposta com período existente")
 
         price = CatalogPrice(
             service_id=service_id,
@@ -223,14 +222,13 @@ def update_service_rules(
 
         self._log_change(
             entity_type="catalog_price",
-            entity_id=price.id,
+            entity_id=str(price.id),
             action="create",
             old_value=None,
             new_value={
-                "service_id": str(service_id),
-                "price_cents": price_cents,
-                "valid_from": valid_from.isoformat(),
-                "valid_to": valid_to.isoformat() if valid_to else None,
+                "price_cents": price.price_cents,
+                "valid_from": price.valid_from.isoformat() if price.valid_from else None,
+                "valid_to": price.valid_to.isoformat() if price.valid_to else None,
             },
             actor_id=actor_id,
             actor_role=actor_role,
@@ -267,7 +265,7 @@ def update_service_rules(
 
         self._log_change(
             entity_type="catalog_price",
-            entity_id=price.id,
+            entity_id=str(price.id),
             action="update",
             old_value=old_val,
             new_value={
@@ -280,27 +278,28 @@ def update_service_rules(
         )
         return price
 
-    def deactivate_price(self, price_id: UUID, actor_id: str, actor_role: str) -> Any:
-        price = self._session.query(CatalogPrice).filter_by(id=price_id).first()
-        if not price:
-            raise ValueError("Preço não encontrado")
+    def deactivate_service(self, service_id: UUID, actor_id: str, actor_role: str) -> Any:
+        service = self._session.query(CatalogService).filter_by(id=service_id).first()
+        if not service:
+            raise ValueError("Serviço não encontrado")
 
-        old_val = {"active": price.active}
-        price.active = False
-        price.updated_at = self._now()
+        old_val = {"active": service.active}
+        service.active = False
+        service.updated_at = self._now()
         self._session.flush()
 
         self._log_change(
-            entity_type="catalog_price",
-            entity_id=price.id,
+            entity_type="catalog_service",
+            entity_id=str(service.id),
             action="deactivate",
             old_value=old_val,
             new_value={"active": False},
             actor_id=actor_id,
             actor_role=actor_role,
         )
-        return price
-# --- FAQs ---
+        return service
+
+    # --- FAQs ---
     def add_faq(
         self,
         service_id: UUID,
@@ -326,7 +325,7 @@ def update_service_rules(
 
         self._log_change(
             entity_type="catalog_faq",
-            entity_id=faq.id,
+            entity_id=str(faq.id),
             action="create",
             old_value=None,
             new_value={"question": faq.question},
@@ -362,7 +361,7 @@ def update_service_rules(
 
         self._log_change(
             entity_type="catalog_faq",
-            entity_id=faq.id,
+            entity_id=str(faq.id),
             action="update",
             old_value=old_val,
             new_value={"question": faq.question},
@@ -383,7 +382,7 @@ def update_service_rules(
 
         self._log_change(
             entity_type="catalog_faq",
-            entity_id=faq.id,
+            entity_id=str(faq.id),
             action="deactivate",
             old_value=old_val,
             new_value={"active": False},
@@ -391,3 +390,28 @@ def update_service_rules(
             actor_role=actor_role,
         )
         return faq
+
+    # --- Prices ---
+    def deactivate_price(self, price_id: UUID, actor_id: str, actor_role: str) -> Any:
+        price = self._session.query(CatalogPrice).filter_by(id=price_id).first()
+        if not price:
+            raise ValueError("Preço não encontrado")
+
+        old_valid_to = price.valid_to.isoformat() if price.valid_to else None
+        old_val = {"active": price.active, "valid_to": old_valid_to}
+        now = self._now()
+        price.active = False
+        price.valid_to = now
+        price.updated_at = now
+        self._session.flush()
+
+        self._log_change(
+            entity_type="catalog_price",
+            entity_id=str(price.id),
+            action="deactivate",
+            old_value=old_val,
+            new_value={"active": False, "valid_to": now.isoformat()},
+            actor_id=actor_id,
+            actor_role=actor_role,
+        )
+        return price
