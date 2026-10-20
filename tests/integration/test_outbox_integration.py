@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import create_engine
@@ -10,10 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from vendas.bootstrap.settings import settings
 from vendas.infrastructure.persistence.base import Base
 from vendas.infrastructure.persistence.orm_models import OutboxModel
-from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository as QueueOutboxRepository
 from vendas.infrastructure.persistence.repositories import (
     SQLAlchemyOutboxRepository as PersistenceOutboxRepository,
 )
+from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository as QueueOutboxRepository
 
 
 def _make_session() -> Session:
@@ -96,7 +95,6 @@ def test_outbox_contract_between_repositories() -> None:
         except IntegrityError:
             session.rollback()
             # expected
-            pass
         else:
             assert False, "Expected IntegrityError on duplicate idempotency_key"
     finally:

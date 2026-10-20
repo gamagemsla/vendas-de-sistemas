@@ -12,8 +12,8 @@ class SQLAlchemyOutboxRepository:
             event_type=event_type,
             payload=payload,
             idempotency_key=idempotency_key,
-            status="PENDING",
-            attempts=0,
+            status=OutboxStatus.PENDING,
+            retry_count=0,
         )
         self._session.add(model)
 
@@ -21,7 +21,7 @@ class SQLAlchemyOutboxRepository:
         """Busca mensagens pendentes na outbox usando SKIP LOCKED para concorrência segura entre workers."""
         models = (
             self._session.query(OutboxModel)
-            .filter(OutboxModel.status == "PENDING")
+            .filter(OutboxModel.status == OutboxStatus.PENDING)
             .with_for_update(skip_locked=True)
             .limit(batch_size)
             .all()
@@ -31,13 +31,13 @@ class SQLAlchemyOutboxRepository:
     def mark_as_sent(self, outbox_id: str) -> None:
         model = self._session.query(OutboxModel).filter_by(id=outbox_id).first()
         if model:
-            model.status = "SENT"
+            model.status = OutboxStatus.SENT
 
     def mark_as_failed(self, outbox_id: str, error_message: str) -> None:
         model = self._session.query(OutboxModel).filter_by(id=outbox_id).first()
         if model:
             model.retry_count += 1
-            if model.retry_count >= 5:
+            if model.retry_count >= model.max_retries:
                 model.status = OutboxStatus.DEAD_LETTER  # Usando o Enum
             else:
                 model.status = OutboxStatus.PENDING  # Usando o Enum
