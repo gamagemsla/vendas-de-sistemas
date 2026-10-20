@@ -7,9 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.bootstrap.settings import settings
-from vendas.domain.ports import Clock, SystemClock
+from vendas.domain.ports import Clock
 from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 

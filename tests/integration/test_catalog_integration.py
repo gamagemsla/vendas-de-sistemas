@@ -13,7 +13,7 @@ from vendas.application.commands.catalog import (
     UpdatePriceCommand,
 )
 from vendas.bootstrap.settings import settings
-from vendas.domain.ports import SystemClock
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
 from vendas.infrastructure.persistence.base import Base
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository

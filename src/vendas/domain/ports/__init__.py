@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol, Self, TypeVar
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.events import DomainEvent
@@ -54,51 +53,7 @@ class Repository(Protocol[TEntity]):
 # Clock Port
 # =============================================================================
 
-
-class Clock(Protocol):
-    """Port para obtenção de tempo atual - permite fake em testes."""
-
-    def now(self, tz: ZoneInfo | None = None) -> datetime:
-        """Retorna o datetime atual no timezone especificado (UTC se None)."""
-        ...
-
-
-class SystemClock:
-    """Implementação real do Clock usando datetime.now()."""
-
-    def now(self, tz: ZoneInfo | None = None) -> datetime:
-        return datetime.now(tz)
-
-
-class FakeClock:
-    """Fake do Clock para testes - tempo controlado manualmente."""
-
-    def __init__(self, initial_time: datetime | None = None):
-        self._time = initial_time or datetime(2024, 1, 15, 10, 0, 0)  # Segunda-feira 10h
-
-    def now(self, tz: ZoneInfo | None = None) -> datetime:
-        if tz is not None and self._time.tzinfo is None:
-            return self._time.replace(tzinfo=tz)
-        if tz is not None and self._time.tzinfo is not None:
-            return self._time.astimezone(tz)
-        return self._time
-
-    def set_time(self, new_time: datetime) -> None:
-        """Define o tempo manualmente para testes."""
-        self._time = new_time
-
-    def advance(self, seconds: int) -> None:
-        """Avança o tempo em segundos."""
-        from datetime import timedelta
-
-        self._time += timedelta(seconds=seconds)
-
-    def advance_days(self, days: int) -> None:
-        """Avança o tempo em dias."""
-        from datetime import timedelta
-
-        self._time += timedelta(days=days)
-
+from .clock import Clock
 
 # =============================================================================
 # Lead Repository Port
@@ -751,7 +706,6 @@ __all__ = [
     "EnrichedLeadData",
     # Base
     "Entity",
-    "FakeClock",
     # Job Queue
     "Job",
     "JobQueue",
@@ -777,7 +731,6 @@ __all__ = [
     "SendResult",
     # Referenced in policies
     "SuppressionListPort",
-    "SystemClock",
     # Unit of Work
     "UnitOfWork",
 ]

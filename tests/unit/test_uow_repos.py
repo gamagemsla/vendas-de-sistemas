@@ -3,7 +3,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from vendas.domain.ports import SystemClock
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.base import Base
 from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
 

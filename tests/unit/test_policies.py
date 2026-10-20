@@ -17,8 +17,9 @@ from vendas.domain.policies import (
     SendWindowPolicy,
     SendWindowResult,
 )
-from vendas.domain.ports import FakeClock
 from vendas.domain.value_objects import Phone
+
+from ..fakes.fakes import FakeClock
 
 
 class TestSendWindowPolicy:
