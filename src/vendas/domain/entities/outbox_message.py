@@ -29,15 +29,13 @@ class OutboxMessage:
 
     Attributes:
         id: Identificador único da mensagem.
-        aggregate_type: Tipo do agregado ("Lead", "Conversation", etc.).
-        aggregate_id: ID do agregado.
         event_type: Tipo do evento de domínio.
         payload: Dados do evento em dict.
+        idempotency_key: Chave de idempotência (única).
         channel: Canal de envio ("whatsapp", "email", None para eventos internos).
         destination: Destino (telefone, e-mail, etc.).
-        template_name: Nome do template prê-aprovado (se aplicável).
+        template_name: Nome do template pré-aprovado (se aplicável).
         template_params: Parâmetros do template.
-        priority: Prioridade (0=normal, 1=high, -1=low).
         attempts: Tentativas realizadas.
         max_attempts: Máximo de tentativas permitidas.
         status: Estado atual.
@@ -45,18 +43,17 @@ class OutboxMessage:
         scheduled_at: Data/hora para processamento.
         created_at: Timestamp de criação.
         processed_at: Timestamp de processamento (se finalizado).
+        provider_message_id: ID retornado pelo provedor (WhatsApp, e-mail…).
     """
 
     id: UUID
-    aggregate_type: str
-    aggregate_id: UUID
     event_type: str
     payload: dict[str, Any]
+    idempotency_key: str
     channel: str | None = None
     destination: str | None = None
     template_name: str | None = None
     template_params: dict[str, Any] | None = None
-    priority: int = 0
     attempts: int = 0
     max_attempts: int = 3
     status: OutboxStatus = OutboxStatus.PENDING
@@ -64,34 +61,31 @@ class OutboxMessage:
     scheduled_at: datetime = field(default_factory=datetime.utcnow)
     created_at: datetime = field(default_factory=datetime.utcnow)
     processed_at: datetime | None = None
+    provider_message_id: str | None = None
 
     @classmethod
     def create(
         cls,
-        aggregate_type: str,
-        aggregate_id: UUID,
         event_type: str,
         payload: dict[str, Any],
+        idempotency_key: str,
         channel: str | None = None,
         destination: str | None = None,
         template_name: str | None = None,
         template_params: dict[str, Any] | None = None,
-        priority: int = 0,
         max_attempts: int = 3,
         scheduled_at: datetime | None = None,
     ) -> OutboxMessage:
         """Factory para criar nova mensagem na outbox."""
         return cls(
             id=uuid4(),
-            aggregate_type=aggregate_type,
-            aggregate_id=aggregate_id,
             event_type=event_type,
             payload=payload,
+            idempotency_key=idempotency_key,
             channel=channel,
             destination=destination,
             template_name=template_name,
             template_params=template_params,
-            priority=priority,
             max_attempts=max_attempts,
             status=OutboxStatus.PENDING,
             scheduled_at=scheduled_at or datetime.utcnow(),
@@ -113,6 +107,8 @@ class OutboxMessage:
         self.attempts += 1
         self.processed_at = datetime.utcnow()
         self.last_error = None
+        if external_id is not None:
+            self.provider_message_id = external_id
 
     def mark_failed(self, error: str, will_retry: bool) -> None:
         """Marca como falhada."""

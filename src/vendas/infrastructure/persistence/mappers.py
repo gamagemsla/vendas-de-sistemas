@@ -4,6 +4,7 @@ from vendas.domain.entities.booking import Booking, BookingStatus
 from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, EnrollmentStatus
 from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
+from vendas.domain.entities.outbox_message import OutboxMessage, OutboxStatus
 from vendas.domain.entities.suppression_record import SuppressionReason, SuppressionRecord
 from vendas.domain.value_objects import Cnpj, Email, Phone
 from vendas.infrastructure.persistence.orm_models import (
@@ -12,6 +13,9 @@ from vendas.infrastructure.persistence.orm_models import (
     InboundEventModel,
     LeadModel,
     SuppressionListModel,
+)
+from vendas.infrastructure.persistence.orm_models import (
+    Outbox as OutboxModel,
 )
 
 
@@ -258,4 +262,60 @@ class BookingMapper:
             cancellation_reason=entity.cancellation_reason,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
+        )
+
+
+class OutboxMapper:
+    """Mapper para OutboxMessage (Domain ↔ ORM)."""
+
+    @staticmethod
+    def to_domain(model: OutboxModel) -> OutboxMessage | None:
+        """Converte ORM Model para Domain Entity."""
+        if not model:
+            return None
+
+        return OutboxMessage(
+            id=model.id,
+            event_type=model.event_type,
+            payload=model.payload,
+            idempotency_key=model.idempotency_key,
+            channel=model.channel,
+            destination=model.to_phone,
+            template_name=model.template_name,
+            template_params=model.template_params,
+            attempts=model.retry_count,
+            max_attempts=model.max_retries,
+            status=OutboxStatus(
+                model.status.value if hasattr(model.status, "value") else model.status
+            ),
+            last_error=model.error_message,
+            scheduled_at=model.scheduled_at or model.created_at,
+            created_at=model.created_at,
+            processed_at=model.sent_at,
+            provider_message_id=model.provider_message_id,
+        )
+
+    @staticmethod
+    def to_orm(entity: OutboxMessage) -> OutboxModel | None:
+        """Converte Domain Entity para ORM Model."""
+        if not entity:
+            return None
+
+        return OutboxModel(
+            id=entity.id,
+            event_type=entity.event_type,
+            payload=entity.payload,
+            idempotency_key=entity.idempotency_key,
+            channel=entity.channel,
+            to_phone=entity.destination,
+            template_name=entity.template_name,
+            template_params=entity.template_params,
+            status=entity.status,
+            retry_count=entity.attempts,
+            max_retries=entity.max_attempts,
+            error_message=entity.last_error,
+            scheduled_at=entity.scheduled_at,
+            sent_at=entity.processed_at,
+            provider_message_id=entity.provider_message_id,
+            created_at=entity.created_at,
         )

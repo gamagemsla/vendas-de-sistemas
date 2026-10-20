@@ -625,8 +625,11 @@ class Outbox(Base):
     __tablename__ = "outbox"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    channel: Mapped[str] = mapped_column(String(50), nullable=False)
-    to_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    channel: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    to_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     template_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     template_params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     text_body: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -13,7 +13,7 @@ from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, Enrollm
 from vendas.domain.entities.conversation import Conversation, Message
 from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
-from vendas.domain.entities.outbox_message import OutboxMessage, OutboxStatus
+from vendas.domain.entities.outbox_message import OutboxMessage
 from vendas.domain.entities.suppression_record import SuppressionRecord
 from vendas.domain.ports import ConversationFilter, LeadFilter
 from vendas.domain.value_objects import Cnpj, Email, Phone
@@ -22,6 +22,7 @@ from vendas.infrastructure.persistence.mappers import (
     CadenceEnrollmentMapper,
     InboundEventMapper,
     LeadMapper,
+    OutboxMapper,
     SuppressionRecordMapper,
 )
 from vendas.infrastructure.persistence.orm_models import (
@@ -342,33 +343,25 @@ class SQLAlchemyOutboxRepository:
     def add(self, message: OutboxMessage | None = None, **kwargs: Any) -> None:
         """Adiciona mensagem à outbox."""
         if message:
-            model = OutboxModel(
-                id=message.id,
-                channel=message.channel,
-                to_phone=message.destination or "",
-                template_name=message.template_name,
-                template_params=message.template_params,
-                text_body=None,
-                status=message.status.value if hasattr(message.status, "value") else message.status,
-                retry_count=message.attempts,
-                max_retries=message.max_attempts,
-                scheduled_at=message.scheduled_at,
-                created_at=message.created_at,
-            )
+            model = OutboxMapper.to_orm(message)
         else:
-            model = OutboxModel(
-                id=UUID(int=0),
-                channel=kwargs.get("channel", ""),
-                to_phone=kwargs.get("destination", ""),
+            event_type = kwargs.get("event_type")
+            payload = kwargs.get("payload")
+            idempotency_key = kwargs.get("idempotency_key")
+            if not (event_type and payload and idempotency_key):
+                raise TypeError("event_type, payload, idempotency_key are required")
+            entity = OutboxMessage.create(
+                event_type=event_type,
+                payload=payload,
+                idempotency_key=idempotency_key,
+                channel=kwargs.get("channel"),
+                destination=kwargs.get("destination"),
                 template_name=kwargs.get("template_name"),
                 template_params=kwargs.get("template_params"),
-                text_body=None,
-                status="pending",
-                retry_count=0,
-                max_retries=kwargs.get("max_attempts", 3),
-                scheduled_at=kwargs.get("scheduled_at") or datetime.utcnow(),
-                created_at=datetime.utcnow(),
+                max_attempts=kwargs.get("max_attempts", 3),
+                scheduled_at=kwargs.get("scheduled_at"),
             )
+            model = OutboxMapper.to_orm(entity)
 
         self._session.add(model)
 
@@ -379,11 +372,11 @@ class SQLAlchemyOutboxRepository:
     def get(self, entity_id: UUID | str) -> OutboxMessage | None:
         """Busca mensagem por ID."""
         model = self._session.query(OutboxModel).filter_by(id=entity_id).first()
-        return self._to_domain(model) if model else None
+        return OutboxMapper.to_domain(model) if model else None
 
     def save(self, entity: OutboxMessage) -> None:
         """Salva/atualiza mensagem."""
-        model = self._to_orm(entity)
+        model = OutboxMapper.to_orm(entity)
         self._session.merge(model)
 
     def remove(self, entity: OutboxMessage) -> None:
@@ -411,7 +404,7 @@ class SQLAlchemyOutboxRepository:
             .limit(limit)
             .all()
         )
-        return [self._to_domain(m) for m in models]
+        return [dm for m in models if (dm := OutboxMapper.to_domain(m)) is not None]
 
     def mark_processing(self, message_id: UUID | str) -> bool:
         """Marca como processando."""
@@ -455,7 +448,7 @@ class SQLAlchemyOutboxRepository:
             .limit(limit)
             .all()
         )
-        return [self._to_domain(m) for m in models]
+        return [dm for m in models if (dm := OutboxMapper.to_domain(m)) is not None]
 
     def cleanup_old(self, older_than: datetime, statuses: list[str]) -> int:
         """Remove mensagens antigas."""
@@ -470,46 +463,6 @@ class SQLAlchemyOutboxRepository:
             .delete()
         )
         return result
-
-    @staticmethod
-    def _to_domain(model: OutboxModel) -> OutboxMessage:
-        """Converte ORM para Domain."""
-        return OutboxMessage(
-            id=model.id,
-            aggregate_type="Lead",
-            aggregate_id=UUID(int=0),
-            event_type="message_sent",
-            payload={},
-            channel=model.channel,
-            destination=model.to_phone,
-            template_name=model.template_name,
-            template_params=model.template_params,
-            priority=0,
-            attempts=model.retry_count,
-            max_attempts=model.max_retries,
-            status=OutboxStatus(model.status),
-            last_error=model.error_message,
-            scheduled_at=model.scheduled_at or model.created_at,
-            created_at=model.created_at,
-            processed_at=model.sent_at,
-        )
-
-    @staticmethod
-    def _to_orm(entity: OutboxMessage) -> OutboxModel:
-        """Converte Domain para ORM."""
-        return OutboxModel(
-            id=entity.id,
-            channel=entity.channel or "",
-            to_phone=entity.destination or "",
-            template_name=entity.template_name,
-            template_params=entity.template_params,
-            status=entity.status.value if hasattr(entity.status, "value") else entity.status,
-            retry_count=entity.attempts,
-            max_retries=entity.max_attempts,
-            error_message=entity.last_error,
-            scheduled_at=entity.scheduled_at,
-            created_at=entity.created_at,
-        )
 
 
 class SQLAlchemyBookingRepository:

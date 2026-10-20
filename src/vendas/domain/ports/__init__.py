@@ -278,28 +278,7 @@ class ConversationRepository(Repository[Conversation], Protocol):
 # Outbox Repository Port
 # =============================================================================
 
-
-@dataclass(frozen=True, slots=True)
-class OutboxMessage:
-    """Mensagem na outbox para envio assíncrono."""
-
-    id: UUID
-    aggregate_type: str  # "Lead" | "Conversation"
-    aggregate_id: UUID
-    event_type: str  # Tipo do evento de domínio
-    payload: dict[str, Any]
-    channel: str | None  # "whatsapp" | "email" | None (para eventos internos)
-    destination: str | None  # Telefone ou e-mail de destino
-    template_name: str | None
-    template_params: dict[str, Any] | None
-    priority: int  # 0 = normal, 1 = high, -1 = low
-    attempts: int
-    max_attempts: int
-    status: str  # "pending" | "processing" | "sent" | "failed" | "dead_letter"
-    last_error: str | None
-    scheduled_at: datetime
-    created_at: datetime
-    processed_at: datetime | None
+from vendas.domain.entities.outbox_message import OutboxMessage
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,8 +287,6 @@ class OutboxFilter:
 
     status: str | None = None
     channel: str | None = None
-    aggregate_type: str | None = None
-    aggregate_id: UUID | None = None
     scheduled_before: datetime | None = None
     limit: int = 100
 
@@ -324,13 +301,10 @@ class OutboxRepository(Repository[OutboxMessage], Protocol):
         event_type: str | None = None,
         payload: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
-        aggregate_type: str = "Lead",
-        aggregate_id: EntityId | None = None,
         channel: str | None = None,
         destination: str | None = None,
         template_name: str | None = None,
         template_params: dict[str, Any] | None = None,
-        priority: int = 0,
         max_attempts: int = 3,
         scheduled_at: datetime | None = None,
     ) -> None:
@@ -346,13 +320,10 @@ class OutboxRepository(Repository[OutboxMessage], Protocol):
         event_type: str,
         payload: dict[str, Any],
         idempotency_key: str,
-        aggregate_type: str = "Lead",
-        aggregate_id: EntityId | None = None,
         channel: str | None = None,
         destination: str | None = None,
         template_name: str | None = None,
         template_params: dict[str, Any] | None = None,
-        priority: int = 0,
         max_attempts: int = 3,
         scheduled_at: datetime | None = None,
     ) -> None:
