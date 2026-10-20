@@ -15,8 +15,9 @@ from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.outbox_message import OutboxMessage
 from vendas.domain.entities.suppression_record import SuppressionRecord
-from vendas.domain.ports import ConversationFilter, LeadFilter
+from vendas.domain.ports import Clock, ConversationFilter, LeadFilter
 from vendas.domain.value_objects import Cnpj, Email, Phone
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.mappers import (
     BookingMapper,
     CadenceEnrollmentMapper,
@@ -165,8 +166,9 @@ class SQLAlchemyLeadRepository:
 class SQLAlchemyConversationRepository:
     """Repositório de Conversas com SQLAlchemy."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
 
     def add(self, entity: Conversation) -> None:
         """Adiciona nova conversa."""
@@ -176,7 +178,6 @@ class SQLAlchemyConversationRepository:
             channel=entity.channel,
             contact_phone=entity.contact_phone,
             state=entity.state.value if hasattr(entity.state, "value") else entity.state,
-            started_at=datetime.utcnow(),
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -195,7 +196,7 @@ class SQLAlchemyConversationRepository:
                 entity.state.value if hasattr(entity.state, "value") else str(entity.state)
             )
             model.state = state_value  # type: ignore[assignment]
-            model.updated_at = datetime.utcnow()
+            model.updated_at = self._clock.now()
 
     def remove(self, entity: Conversation) -> None:
         """Remove conversa."""
@@ -308,7 +309,7 @@ class SQLAlchemyConversationRepository:
             lead_id=model.lead_id,
             channel=model.channel,
             contact_phone=model.contact_phone,
-            contact_email=None,
+            contact_email=getattr(model, "contact_email", None),
             state=ConversationState(model.state),
             current_step=0,
             last_message_at=model.last_message_at,
@@ -337,8 +338,9 @@ class SQLAlchemyConversationRepository:
 class SQLAlchemyOutboxRepository:
     """Repositório de Outbox com SQLAlchemy."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
 
     def add(self, message: OutboxMessage | None = None, **kwargs: Any) -> None:
         """Adiciona mensagem à outbox."""
@@ -421,7 +423,7 @@ class SQLAlchemyOutboxRepository:
             {
                 "status": "sent",
                 "provider_message_id": external_id,
-                "sent_at": datetime.utcnow(),
+                "sent_at": self._clock.now(),
             }
         )
 
@@ -468,8 +470,9 @@ class SQLAlchemyOutboxRepository:
 class SQLAlchemyBookingRepository:
     """Repositório de Bookings com SQLAlchemy."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
 
     def add(self, entity: Booking) -> None:
         model = BookingMapper.to_orm(entity)
@@ -493,9 +496,7 @@ class SQLAlchemyBookingRepository:
         return [b for m in models if (b := BookingMapper.to_domain(m)) is not None]
 
     def list_upcoming(self, limit: int = 100) -> list[Booking]:
-        from datetime import datetime
-
-        now = datetime.now()
+        now = self._clock.now()
         models = (
             self._session.query(BookingModel)
             .filter(BookingModel.scheduled_at >= now)
@@ -589,8 +590,9 @@ class SQLAlchemyInboundEventRepository:
 class SQLAlchemySuppressionRepository:
     """Repositório de SuppressionRecord com SQLAlchemy."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
 
     def add(self, entity: SuppressionRecord) -> None:
         model = SuppressionRecordMapper.to_orm(entity)
@@ -614,9 +616,7 @@ class SQLAlchemySuppressionRepository:
         return SuppressionRecordMapper.to_domain(model) if model else None
 
     def is_suppressed(self, phone_e164: str) -> bool:
-        from datetime import datetime
-
-        now = datetime.now()
+        now = self._clock.now()
         model = (
             self._session.query(SuppressionListModel)
             .filter_by(phone_e164=phone_e164)

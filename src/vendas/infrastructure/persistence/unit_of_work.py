@@ -11,9 +11,9 @@ from vendas.infrastructure.persistence.repositories import (
     SQLAlchemyEnrollmentRepository,
     SQLAlchemyInboundEventRepository,
     SQLAlchemyLeadRepository,
+    SQLAlchemyOutboxRepository,
     SQLAlchemySuppressionRepository,
 )
-from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository
 
 
 class SQLAlchemyUnitOfWork:
@@ -33,12 +33,12 @@ class SQLAlchemyUnitOfWork:
     def __enter__(self) -> Self:
         self.session = self._session_factory()
         self.leads = SQLAlchemyLeadRepository(self.session)
-        self.conversations = SQLAlchemyConversationRepository(self.session)
-        self.outbox = SQLAlchemyOutboxRepository(self.session)
+        self.conversations = SQLAlchemyConversationRepository(self.session, self._clock)
+        self.outbox = SQLAlchemyOutboxRepository(self.session, self._clock)
         self.enrollments = SQLAlchemyEnrollmentRepository(self.session)
-        self.bookings = SQLAlchemyBookingRepository(self.session)
+        self.bookings = SQLAlchemyBookingRepository(self.session, self._clock)
         self.inbound_events = SQLAlchemyInboundEventRepository(self.session)
-        self.suppression = SQLAlchemySuppressionRepository(self.session)
+        self.suppression = SQLAlchemySuppressionRepository(self.session, self._clock)
         self.catalog = SqlAlchemyCatalogRepository(self.session, self._clock)
         return self
 
