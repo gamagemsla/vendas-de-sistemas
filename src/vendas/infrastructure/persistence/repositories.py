@@ -15,6 +15,7 @@ from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.outbox_message import OutboxMessage
 from vendas.domain.entities.suppression_record import SuppressionReason, SuppressionRecord
+from vendas.domain.policies.retry_policy import compute_next_retry_at
 from vendas.domain.ports import Clock, ConversationFilter, LeadFilter
 from vendas.domain.value_objects import Cnpj, Email, Phone
 from vendas.infrastructure.clock import SystemClock
@@ -434,13 +435,37 @@ class SQLAlchemyOutboxRepository:
         will_retry: bool,
     ) -> None:
         """Marca como falhada."""
-        self._session.query(OutboxModel).filter_by(id=message_id).update(
-            {
-                "retry_count": OutboxModel.retry_count + 1,
-                "error_message": error,
-                "status": "pending" if will_retry else "failed",
-            }
-        )
+        if will_retry:
+            # Need to compute scheduled_at based on new retry_count.
+            # Fetch current retry_count to know the next one.
+            model = self._session.query(OutboxModel).filter_by(id=message_id).first()
+            if model:
+                next_retry_count = model.retry_count + 1
+                now = self._clock.now()
+                scheduled_at = compute_next_retry_at(
+                    now=now,
+                    retry_count=next_retry_count,
+                    jitter=True,
+                )
+                self._session.query(OutboxModel).filter_by(id=message_id).update(
+                    {
+                        "retry_count": next_retry_count,
+                        "error_message": error,
+                        "status": "pending",
+                        "scheduled_at": scheduled_at,
+                    }
+                )
+            else:
+                # Not found, nothing to do
+                return
+        else:
+            self._session.query(OutboxModel).filter_by(id=message_id).update(
+                {
+                    "retry_count": OutboxModel.retry_count + 1,
+                    "error_message": error,
+                    "status": "failed",
+                }
+            )
 
     def get_dead_letters(self, limit: int = 100) -> list[OutboxMessage]:
         """Busca mensagens em dead letter."""

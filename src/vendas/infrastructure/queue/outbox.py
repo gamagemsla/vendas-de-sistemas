@@ -2,6 +2,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from vendas.domain.entities.outbox_payloads import validate_outbox_payload
+from vendas.domain.policies.retry_policy import compute_next_retry_at
 from vendas.domain.ports import Clock
 from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.orm_models import OutboxModel, OutboxStatus
@@ -53,3 +54,9 @@ class SQLAlchemyOutboxRepository:
                 model.status = OutboxStatus.DEAD_LETTER  # Usando o Enum
             else:
                 model.status = OutboxStatus.PENDING  # Usando o Enum
+                now = self._clock.now()
+                model.scheduled_at = compute_next_retry_at(
+                    now=now,
+                    retry_count=model.retry_count,
+                    jitter=True,
+                )
