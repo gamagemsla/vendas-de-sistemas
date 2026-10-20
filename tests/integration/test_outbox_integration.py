@@ -35,9 +35,9 @@ def test_outbox_contract_between_repositories() -> None:
     queue_repo = QueueOutboxRepository(session)
     persistence_repo = PersistenceOutboxRepository(session)
     try:
-        # a) add via queue repo
-        event_type = "lead_created"
-        payload = {"lead_id": str(uuid4()), "name": "Test Lead"}
+        # a) add via queue repo using a known event_type with valid payload
+        event_type = "SEND_AI_RESPONSE"
+        payload = {"phone": "+5511999999999", "content": "Test message"}
         idempotency_key = f"idemp-{uuid4()}"
 
         queue_repo.add(event_type=event_type, payload=payload, idempotency_key=idempotency_key)
@@ -76,7 +76,11 @@ def test_outbox_contract_between_repositories() -> None:
         # mark_as_failed via queue repo (will retry false -> dead_letter)
         # insert another message for failure test
         idempotency_key2 = f"idemp-{uuid4()}"
-        queue_repo.add(event_type="lead_failed", payload={}, idempotency_key=idempotency_key2)
+        queue_repo.add(
+            event_type="SEND_AI_RESPONSE",
+            payload={"phone": "+5511888888888", "content": "Fail test"},
+            idempotency_key=idempotency_key2,
+        )
         session.flush()
         model2 = session.query(OutboxModel).filter_by(idempotency_key=idempotency_key2).one()
         queue_repo.mark_as_failed(str(model2.id), error_message="boom")
@@ -90,7 +94,11 @@ def test_outbox_contract_between_repositories() -> None:
 
         # c) duplicate idempotency_key should raise IntegrityError
         try:
-            queue_repo.add(event_type="dup", payload={}, idempotency_key=idempotency_key)
+            queue_repo.add(
+                event_type="SEND_AI_RESPONSE",
+                payload={"phone": "+5511777777777", "content": "Dup test"},
+                idempotency_key=idempotency_key,
+            )
             session.flush()
             session.commit()
         except IntegrityError:
@@ -110,8 +118,8 @@ def test_claim_pending_respects_scheduled_at() -> None:
 
         # 1) future scheduled_at -> should NOT be claimed
         future_msg = OutboxModel(
-            event_type="future_event",
-            payload={},
+            event_type="SEND_AI_RESPONSE",
+            payload={"phone": "+5511999999999", "content": "Future"},
             idempotency_key=f"idemp-future-{uuid4()}",
             status=OutboxStatus.PENDING,
             scheduled_at=now + timedelta(hours=2),
@@ -120,8 +128,8 @@ def test_claim_pending_respects_scheduled_at() -> None:
 
         # 2) past scheduled_at -> SHOULD be claimed
         past_msg = OutboxModel(
-            event_type="past_event",
-            payload={},
+            event_type="SEND_AI_RESPONSE",
+            payload={"phone": "+5511888888888", "content": "Past"},
             idempotency_key=f"idemp-past-{uuid4()}",
             status=OutboxStatus.PENDING,
             scheduled_at=now - timedelta(hours=1),
@@ -130,8 +138,8 @@ def test_claim_pending_respects_scheduled_at() -> None:
 
         # 3) scheduled_at None -> SHOULD be claimed
         none_msg = OutboxModel(
-            event_type="none_event",
-            payload={},
+            event_type="SEND_AI_RESPONSE",
+            payload={"phone": "+5511777777777", "content": "None"},
             idempotency_key=f"idemp-none-{uuid4()}",
             status=OutboxStatus.PENDING,
             scheduled_at=None,

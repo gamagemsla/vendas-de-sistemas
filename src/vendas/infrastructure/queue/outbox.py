@@ -1,6 +1,7 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from vendas.domain.entities.outbox_payloads import validate_outbox_payload
 from vendas.domain.ports import Clock
 from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.orm_models import OutboxModel, OutboxStatus
@@ -12,9 +13,12 @@ class SQLAlchemyOutboxRepository:
         self._clock = clock or SystemClock()
 
     def add(self, event_type: str, payload: dict, idempotency_key: str) -> None:
+        # Valida payload antes de persistir
+        validated_payload = validate_outbox_payload(event_type, payload)
+
         model = OutboxModel(
             event_type=event_type,
-            payload=payload,
+            payload=validated_payload,
             idempotency_key=idempotency_key,
             status=OutboxStatus.PENDING,
             retry_count=0,

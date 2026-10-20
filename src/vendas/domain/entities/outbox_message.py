@@ -8,6 +8,8 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
+from vendas.domain.entities.outbox_payloads import validate_outbox_payload
+
 
 class OutboxStatus(str, Enum):
     """Estados de uma mensagem na outbox."""
@@ -77,10 +79,13 @@ class OutboxMessage:
         scheduled_at: datetime | None = None,
     ) -> OutboxMessage:
         """Factory para criar nova mensagem na outbox."""
+        # Valida e normaliza o payload conforme o event_type
+        validated_payload = validate_outbox_payload(event_type, payload)
+
         return cls(
             id=uuid4(),
             event_type=event_type,
-            payload=payload,
+            payload=validated_payload,
             idempotency_key=idempotency_key,
             channel=channel,
             destination=destination,
