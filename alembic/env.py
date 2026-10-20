@@ -10,6 +10,8 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # Import settings to get DATABASE_URL
+# Ensure all models are imported so they register with Base.metadata
+import vendas.infrastructure.persistence.orm_models  # noqa: F401
 from vendas.bootstrap.settings import get_settings
 
 # Import Base metadata for autogenerate support
@@ -76,9 +78,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
