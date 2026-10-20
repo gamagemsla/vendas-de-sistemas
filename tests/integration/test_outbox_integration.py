@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import create_engine
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.bootstrap.settings import settings
 from vendas.infrastructure.persistence.base import Base
-from vendas.infrastructure.persistence.orm_models import OutboxModel
+from vendas.infrastructure.persistence.orm_models import OutboxModel, OutboxStatus
 from vendas.infrastructure.persistence.repositories import (
     SQLAlchemyOutboxRepository as PersistenceOutboxRepository,
 )
@@ -97,5 +98,53 @@ def test_outbox_contract_between_repositories() -> None:
             # expected
         else:
             assert False, "Expected IntegrityError on duplicate idempotency_key"
+    finally:
+        session.close()
+
+
+def test_claim_pending_respects_scheduled_at() -> None:
+    session = _make_session()
+    queue_repo = QueueOutboxRepository(session)
+    try:
+        now = datetime.now(UTC)
+
+        # 1) future scheduled_at -> should NOT be claimed
+        future_msg = OutboxModel(
+            event_type="future_event",
+            payload={},
+            idempotency_key=f"idemp-future-{uuid4()}",
+            status=OutboxStatus.PENDING,
+            scheduled_at=now + timedelta(hours=2),
+        )
+        session.add(future_msg)
+
+        # 2) past scheduled_at -> SHOULD be claimed
+        past_msg = OutboxModel(
+            event_type="past_event",
+            payload={},
+            idempotency_key=f"idemp-past-{uuid4()}",
+            status=OutboxStatus.PENDING,
+            scheduled_at=now - timedelta(hours=1),
+        )
+        session.add(past_msg)
+
+        # 3) scheduled_at None -> SHOULD be claimed
+        none_msg = OutboxModel(
+            event_type="none_event",
+            payload={},
+            idempotency_key=f"idemp-none-{uuid4()}",
+            status=OutboxStatus.PENDING,
+            scheduled_at=None,
+        )
+        session.add(none_msg)
+
+        session.flush()
+
+        claimed = queue_repo.claim_pending(batch_size=10)
+        claimed_ids = {m.id for m in claimed}
+
+        assert future_msg.id not in claimed_ids, "Future scheduled message should not be claimed"
+        assert past_msg.id in claimed_ids, "Past scheduled message should be claimed"
+        assert none_msg.id in claimed_ids, "Message with scheduled_at=None should be claimed"
     finally:
         session.close()

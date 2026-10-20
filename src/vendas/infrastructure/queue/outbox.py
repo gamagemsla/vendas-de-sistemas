@@ -1,11 +1,15 @@
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from vendas.domain.ports import Clock
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.orm_models import OutboxModel, OutboxStatus
 
 
 class SQLAlchemyOutboxRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
 
     def add(self, event_type: str, payload: dict, idempotency_key: str) -> None:
         model = OutboxModel(
@@ -18,10 +22,14 @@ class SQLAlchemyOutboxRepository:
         self._session.add(model)
 
     def claim_pending(self, batch_size: int = 10) -> list[OutboxModel]:
-        """Busca mensagens pendentes na outbox usando SKIP LOCKED para concorrência segura entre workers."""
+        """Busca mensagens pendentes na outbox usando SKIP LOCKED para concorrência segura entre workers.
+        Considera apenas mensagens cujo scheduled_at é None ou <= now.
+        """
+        now = self._clock.now()
         models = (
             self._session.query(OutboxModel)
             .filter(OutboxModel.status == OutboxStatus.PENDING)
+            .filter(or_(OutboxModel.scheduled_at.is_(None), OutboxModel.scheduled_at <= now))
             .with_for_update(skip_locked=True)
             .limit(batch_size)
             .all()
