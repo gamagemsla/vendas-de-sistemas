@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
@@ -26,18 +26,18 @@ class SuppressionRecord:
         id: Identificador único do registro.
         phone_e164: Telefone em formato E.164 (ex: "+5511999999999").
         reason: Motivo da supressão.
+        created_at: Timestamp de criação (timezone-aware).
         source: Fonte/origem da supressão (ex: "lead_opted_out", "whatsapp_webhook").
         notes: Notas adicionais.
-        created_at: Timestamp de criação.
         expires_at: Timestamp de expiração (None = permanente).
     """
 
     id: UUID
     phone_e164: str
     reason: SuppressionReason
+    created_at: datetime
     source: str | None = None
     notes: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
     expires_at: datetime | None = None
 
     @classmethod
@@ -48,8 +48,15 @@ class SuppressionRecord:
         source: str | None = None,
         notes: str | None = None,
         expires_at: datetime | None = None,
+        created_at: datetime | None = None,
     ) -> SuppressionRecord:
-        """Factory para criar novo registro de supressão."""
+        """Factory para criar novo registro de supressão.
+
+        Args:
+            created_at: Timestamp de criação (timezone-aware). Se não fornecido, deve ser passado pelo chamador.
+        """
+        if created_at is None:
+            raise ValueError("created_at é obrigatório e deve ser timezone-aware")
         reason_enum = reason if isinstance(reason, SuppressionReason) else SuppressionReason(reason)
         return cls(
             id=uuid4(),
@@ -57,16 +64,19 @@ class SuppressionRecord:
             reason=reason_enum,
             source=source.strip() if source and source.strip() else None,
             notes=notes.strip() if notes and notes.strip() else None,
-            created_at=datetime.utcnow(),
+            created_at=created_at,
             expires_at=expires_at,
         )
 
-    def is_active(self, at: datetime | None = None) -> bool:
-        """Verifica se o registro está ativo (não expirou)."""
-        now = at or datetime.utcnow()
+    def is_active(self, at: datetime) -> bool:
+        """Verifica se o registro está ativo (não expirou) no momento 'at'.
+
+        Args:
+            at: Timestamp de referência (timezone-aware) para avaliar expiração.
+        """
         if self.expires_at is None:
             return True  # Sem expiração = permanente
-        return now < self.expires_at
+        return at < self.expires_at
 
     def is_opt_out(self) -> bool:
         """Verifica se é opt-out (vs DNC, bounce, etc)."""

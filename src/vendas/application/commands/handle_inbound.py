@@ -2,6 +2,7 @@ from typing import Any
 
 import structlog
 
+from vendas.domain.entities.suppression_record import SuppressionReason
 from vendas.domain.policies.opt_out_policy import OptOutPolicy
 from vendas.domain.ports import UnitOfWork
 from vendas.domain.value_objects.phone import Phone
@@ -34,7 +35,8 @@ class HandleInboundCommand:
                 uow.inbound_events.record(provider_message_id, sender_phone, message_text)
 
             # 2. Localiza o lead pelo telefone normalizado (Single-Tenant)
-            lead = uow.leads.find_by_dedupe_key(cnpj=None, phone=Phone(sender_phone))
+            phone_vo = Phone(sender_phone)
+            lead = uow.leads.find_by_dedupe_key(cnpj=None, phone=phone_vo)
             if not lead:
                 logger.warning("lead_nao_encontrado_para_inbound", phone=sender_phone)
                 return
@@ -43,9 +45,15 @@ class HandleInboundCommand:
             if OptOutPolicy.detects_opt_out(message_text) or lead.status == "OPTED_OUT":
                 lead.mark_as_opted_out()
                 uow.leads.save(lead)
-                # Registra na lista de supressão permanente
-                if hasattr(uow, "suppression"):
-                    uow.suppression.add(identifier=sender_phone, reason="Opt-out via WhatsApp")
+                # Registra na lista de supressão permanente via helper
+                if hasattr(uow, "suppression") and uow.suppression:
+                    phone_e164 = str(phone_vo)
+                    uow.suppression.add_suppression(
+                        phone_e164=phone_e164,
+                        reason=SuppressionReason.OPT_OUT,
+                        source="whatsapp_opt_out",
+                        notes=f"Opt-out detectado via mensagem: {message_text[:100]}",
+                    )
                 uow.commit()
                 logger.info("opt_out_processado_imediatamente", lead_id=lead.id)
                 return

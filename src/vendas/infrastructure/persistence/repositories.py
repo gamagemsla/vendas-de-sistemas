@@ -14,7 +14,7 @@ from vendas.domain.entities.conversation import Conversation, Message
 from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.outbox_message import OutboxMessage
-from vendas.domain.entities.suppression_record import SuppressionRecord
+from vendas.domain.entities.suppression_record import SuppressionReason, SuppressionRecord
 from vendas.domain.ports import Clock, ConversationFilter, LeadFilter
 from vendas.domain.value_objects import Cnpj, Email, Phone
 from vendas.infrastructure.clock import SystemClock
@@ -627,3 +627,33 @@ class SQLAlchemySuppressionRepository:
             .first()
         )
         return model is not None
+
+    def add_suppression(
+        self,
+        phone_e164: str,
+        reason: SuppressionReason = SuppressionReason.OPT_OUT,
+        source: str = "whatsapp_opt_out",
+        notes: str | None = None,
+    ) -> SuppressionRecord:
+        """Cria e adiciona um registro de supressão permanente para o telefone.
+
+        Args:
+            phone_e164: Telefone em formato E.164.
+            reason: Motivo da supressão (padrão: OPT_OUT).
+            source: Origem do registro (padrão: "whatsapp_opt_out").
+            notes: Observações adicionais.
+
+        Returns:
+            O SuppressionRecord criado e persistido.
+        """
+        now = self._clock.now()
+        record = SuppressionRecord.create(
+            phone_e164=phone_e164,
+            reason=reason,
+            source=source,
+            notes=notes,
+            expires_at=None,  # permanente
+            created_at=now,
+        )
+        self.add(record)
+        return record
