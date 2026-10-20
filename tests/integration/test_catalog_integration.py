@@ -22,7 +22,8 @@ from vendas.interfaces.api.app import app
 
 
 def _make_session() -> Session:
-    engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    db_url = settings.DATABASE_URL.replace("@postgres:", "@localhost:")
+    engine = create_engine(db_url, pool_pre_ping=True)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(
