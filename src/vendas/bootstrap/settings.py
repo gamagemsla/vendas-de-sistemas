@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Flags de Segurança e Operação (DRY_RUN obrigatório como True por padrão)
     DRY_RUN: bool = True
     AUTOMATION_ENABLED: bool = False
+    KILL_SWITCH: bool = False
 
     # Orçamentos Diários dos Provedores
     APIFY_DAILY_BUDGET: float = 10.0

@@ -1,6 +1,8 @@
 import structlog
 from fastapi import APIRouter, status
 
+from vendas.bootstrap.settings import settings
+
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["Observabilidade & Saúde"])
@@ -13,7 +15,10 @@ async def liveness_check() -> dict[str, str]:
 
 
 @router.get("/ready", status_code=status.HTTP_200_OK)
-async def readiness_check() -> dict[str, str]:
-    """Readiness probe: verifica se as dependências críticas (como o Banco de Dados) estão prontas."""
-    # Aqui você pode adicionar uma checagem rápida no banco de dados se necessário.
+async def readiness_check() -> dict[str, object]:
+    """Readiness probe: verifica se o sistema está pronto para processar envios.
+    Se KILL_SWITCH ativo, retorna status 'paused' mas HTTP 200 para não derrubar o pod.
+    """
+    if settings.KILL_SWITCH:
+        return {"status": "paused", "kill_switch": True}
     return {"status": "ready", "database": "connected"}

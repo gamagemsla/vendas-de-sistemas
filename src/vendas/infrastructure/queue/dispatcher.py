@@ -1,6 +1,10 @@
 import structlog
 
 from vendas.bootstrap.settings import settings
+from vendas.domain.entities.outbox_payloads import (
+    InvalidOutboxPayloadError,
+    validate_outbox_payload,
+)
 from vendas.domain.ports.message_channel import MessageChannel
 from vendas.domain.ports.uow import UnitOfWork
 
@@ -15,6 +19,11 @@ class OutboxDispatcher:
         self._channel = channel
 
     def dispatch_batch(self, batch_size: int = 10) -> int:
+        # Interrupção imediata se KILL_SWITCH ativo — antes de qualquer transação
+        if settings.KILL_SWITCH:
+            logger.warning("worker_parado_kill_switch", kill_switch=True)
+            return 0
+
         processed_count = 0
 
         with self._uow as uow:
@@ -31,11 +40,14 @@ class OutboxDispatcher:
                         event_type=item.event_type,
                     )
 
+                    # Valida payload antes de qualquer envio (DRY_RUN ou real)
+                    validated_payload = validate_outbox_payload(item.event_type, item.payload)
+
                     # REGRA DE OURO: DRY_RUN=true impede qualquer envio real
                     if settings.DRY_RUN:
                         logger.info(
                             "dry_run_ativo_mensagem_simulada",
-                            payload=item.payload,
+                            payload=validated_payload,
                             idempotency_key=item.idempotency_key,
                         )
                         uow.outbox.mark_as_sent(str(item.id))
@@ -46,12 +58,18 @@ class OutboxDispatcher:
                             )
 
                         # Envio real através do Port do Canal de Mensagem
-                        self._channel.send(item.payload)
+                        self._channel.send(validated_payload)
                         uow.outbox.mark_as_sent(str(item.id))
 
                     processed_count += 1
 
-                except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                except (
+                    OSError,
+                    RuntimeError,
+                    TimeoutError,
+                    ValueError,
+                    InvalidOutboxPayloadError,
+                ) as exc:
                     logger.error("erro_envio_outbox", outbox_id=item.id, error=str(exc))
                     uow.outbox.mark_as_failed(str(item.id), error_message=str(exc))
 
