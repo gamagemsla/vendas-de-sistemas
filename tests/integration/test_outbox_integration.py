@@ -11,7 +11,9 @@ from vendas.bootstrap.settings import settings
 from vendas.infrastructure.persistence.base import Base
 from vendas.infrastructure.persistence.orm_models import OutboxModel
 from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository as QueueOutboxRepository
-from vendas.infrastructure.persistence.repositories import SQLAlchemyOutboxRepository as PersistenceOutboxRepository
+from vendas.infrastructure.persistence.repositories import (
+    SQLAlchemyOutboxRepository as PersistenceOutboxRepository,
+)
 
 
 def _make_session() -> Session:
