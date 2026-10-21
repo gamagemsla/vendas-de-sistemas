@@ -1,33 +1,25 @@
 # STATE.md — vendas-de-sistemas
 Atualizado em: 20/10/2026
-Branch e commit: master (após Tarefa A1.3)
-Fase: Bloco A — Refatoração de Responsabilidades
+Branch e commit: master (Bloco A 100% Concluído)
+Fase atual: Transição do Bloco A para Bloco B / Fase F2
 
-Validações comprovadas (todas verdes):
-- pytest tests/unit -q: 131 passed
-- pytest tests/integration -q: 5 passed, 1 warning (PostgreSQL local ativo)
-- python -m mypy src/vendas --strict: Success (82 source files)
+Validações comprovadas (Quality Gates Verdes):
+- pytest tests/unit -q: 170 passed
+- pytest tests/integration -q: 5 passed (PostgreSQL ativo)
+- python -m mypy src/vendas --strict: Success (89 source files)
 - ruff check src tests: All checks passed!
-- ruff format --check src tests: 98 files already formatted
+- ruff format --check src tests: 111 files already formatted
 - lint-imports: Contracts: 4 kept, 0 broken
 
-Decisões consolidadas:
-- Tarefa 1.1 concluída: queue/outbox.py alinhado a OutboxModel (retry_count, OutboxStatus e model.max_retries).
-- Tarefa A1.1 concluída: Port Clock canônico (typing.Protocol) em domain/ports/clock.py; SystemClock com UTC em infrastructure/clock.py; FakeClock movido exclusivamente para tests/fakes/fakes.py.
-- Tarefa A1.2 concluída: Clock injetado via SQLAlchemyUnitOfWork e repositórios de persistência; eliminados datetime.utcnow() e datetime.now() sem fuso em repositories.py; remoção de started_at e correção de contact_email.
-- Tarefa A1.3 concluída: Clock injetado em queue/outbox.py; claim_pending filtra por scheduled_at <= now ou IS NULL com SKIP LOCKED; teste de integração comportamental adicionado.
-
-Pendências imediatas:
-- A1.4: Gerar baseline de migration Alembic em alembic/versions/ (reversível) com orm_models importado em env.py.
-- Bloco A (itens restantes):
-  * A2: Guardas e validação de payload no queue
-  * A3: Kill switch (booleano e middleware)
-  * A4: Opt-out (Contact e SuppressionList)
-  * A5: Handoff com backoff exponencial
-  * A6: DRY_RUN mode flag e simulação
-  * A7: Logs estruturados (JSON) e correlationId
-  * A8: Autenticação de API (API Key e roles)
-- Infraestrutura de testes: isolar vendas_db_test para evitar conflito com docker-compose.
+Decisões e Entregas Consolidadas (Bloco A - Itens 1 a 8):
+- A1: Port Clock(Protocol) UTC, injeção no UoW/repositórios, claim_pending com SKIP LOCKED temporal, baseline Alembic reversível e fix de enums no Postgres.
+- A2: Schemas de payload Pydantic por event_type e validação defensiva na criação e no dispatcher.
+- A3: Kill Switch global no settings, parada imediata no dispatcher e middleware de proteção na API.
+- A4: Opt-out mandatório, gravação na suppression_list e bloqueio estrito em cadências.
+- A5: Retry policy de base 2 com jitter de 10% e persistência de scheduled_at futuro para falhas transientes.
+- A6: DRY_RUN controlado exclusivamente pelo OutboxDispatcher com mascaramento recursivo de PII para LGPD.
+- A7: Propagação de correlation_id em headers HTTP e por ciclo de mensagem no worker via structlog.
+- A8: Autenticação da API por tokens estáticos (dev/prod) com controle de papéis (admin/operator) e hmac.compare_digest.
 
 Próximo passo:
-- Executar a Fase 2 da Tarefa A1.4 no Cline (gerar initial baseline schema no Alembic e testar upgrade head / downgrade base).
+- Iniciar o Bloco B (Ingestão, Provedores Externos e Deduplicação - Fase F2).
