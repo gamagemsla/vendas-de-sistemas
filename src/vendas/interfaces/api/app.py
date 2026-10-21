@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 import structlog
 from fastapi import FastAPI, Request, Response
 
+from vendas.bootstrap.logging import clear_correlation_id, set_correlation_id
 from vendas.bootstrap.settings import settings
 from vendas.interfaces.api.routes.catalog import router as catalog_router
 from vendas.interfaces.api.routes.health import router as health_router
@@ -12,8 +13,26 @@ from vendas.interfaces.api.routes.health import router as health_router
 logger = structlog.get_logger()
 
 
+async def correlation_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Middleware que garante correlation_id em todos os logs e no header de resposta."""
+    incoming_cid = request.headers.get("X-Correlation-ID")
+    cid = set_correlation_id(incoming_cid)
+    try:
+        response = await call_next(request)
+    finally:
+        # Garante que o header seja devolvido mesmo em exceções
+        response.headers["X-Correlation-ID"] = cid
+        clear_correlation_id()
+    return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Vendas API")
+
+    # Middleware de Correlation ID (mais externo)
+    app.middleware("http")(correlation_id_middleware)
 
     @app.middleware("http")
     async def kill_switch_guard(

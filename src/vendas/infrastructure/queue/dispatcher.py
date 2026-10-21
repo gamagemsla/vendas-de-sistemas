@@ -1,5 +1,6 @@
 import structlog
 
+from vendas.bootstrap.logging import clear_correlation_id, set_correlation_id
 from vendas.bootstrap.settings import settings
 from vendas.domain.entities.outbox_payloads import (
     InvalidOutboxPayloadError,
@@ -33,6 +34,13 @@ class OutboxDispatcher:
                 return 0
 
             for item in pending_items:
+                # Define correlation_id para este item (payload ou id do item)
+                payload = item.payload
+                cid = None
+                if isinstance(payload, dict):
+                    cid = payload.get("correlation_id")
+                set_correlation_id(cid or str(item.id))
+
                 try:
                     logger.info(
                         "processando_outbox_item",
@@ -74,6 +82,8 @@ class OutboxDispatcher:
                 ) as exc:
                     logger.error("erro_envio_outbox", outbox_id=item.id, error=str(exc))
                     uow.outbox.mark_as_failed(str(item.id), error_message=str(exc))
+                finally:
+                    clear_correlation_id()
 
             uow.commit()
 

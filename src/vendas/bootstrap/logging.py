@@ -56,6 +56,29 @@ def mask_sensitive_data(
     return cast(MutableMapping[str, Any], _recursive_mask(event_dict))
 
 
+import uuid
+
+
+def set_correlation_id(correlation_id: str | None = None) -> str:
+    """Define o correlation_id no contextvars do structlog.
+    Se não informado, gera um UUID v4.
+    Retorna o correlation_id utilizado.
+    """
+    cid = correlation_id or str(uuid.uuid4())
+    structlog.contextvars.bind_contextvars(correlation_id=cid)
+    return cid
+
+
+def get_correlation_id() -> str | None:
+    """Obtém o correlation_id atual do contextvars, se houver."""
+    return structlog.contextvars.get_contextvars().get("correlation_id")
+
+
+def clear_correlation_id() -> None:
+    """Remove o correlation_id do contextvars."""
+    structlog.contextvars.unbind_contextvars("correlation_id")
+
+
 def configure_logging() -> None:
     """Configura o structlog para saída JSON com correlation ID e mascaramento."""
     structlog.configure(
