@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.application.commands.catalog import (
@@ -25,6 +25,18 @@ def _make_session() -> Session:
     db_url = settings.DATABASE_URL.replace("@postgres:", "@localhost:")
     engine = create_engine(db_url, pool_pre_ping=True)
     Base.metadata.drop_all(bind=engine)
+    # Clean up PostgreSQL ENUM types that persist in pg_type after drop_all
+    if engine.dialect.name == "postgresql":
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            result = conn.execute(
+                text(
+                    "SELECT typname FROM pg_type t "
+                    "JOIN pg_namespace n ON t.typnamespace = n.oid "
+                    "WHERE n.nspname = 'public' AND t.typtype = 'e'"
+                )
+            )
+            for row in result:
+                conn.execute(text(f"DROP TYPE IF EXISTS public.{row.typname} CASCADE"))
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(
         bind=engine,
