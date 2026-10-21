@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +12,9 @@ class Settings(BaseSettings):
 
     # Banco de Dados
     DATABASE_URL: str
+    DATABASE_URL_TEST: str = os.getenv(
+        "DATABASE_URL_TEST", "postgresql://postgres:password@localhost:5432/vendas_db_test"
+    )
 
     # Flags de Segurança e Operação (DRY_RUN obrigatório como True por padrão)
     DRY_RUN: bool = True

@@ -9,6 +9,7 @@ services:
       POSTGRES_USER_PASSWORD: password
       POSTGRES_PASSWORD: password
       POSTGRES_DB: vendas_db
+      DATABASE_URL_TEST: postgresql://postgres:password@localhost:5432/vendas_db_test
     ports:
       - "5432:5432"
     volumes:

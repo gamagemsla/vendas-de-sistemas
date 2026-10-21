@@ -17,7 +17,7 @@ from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository as Que
 
 
 def _make_session() -> Session:
-    db_url = settings.DATABASE_URL.replace("@postgres:", "@localhost:")
+    db_url = settings.DATABASE_URL  # Já aponta para vendas_db_test via conftest.py
     engine = create_engine(db_url, pool_pre_ping=True)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)

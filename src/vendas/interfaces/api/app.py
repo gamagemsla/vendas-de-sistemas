@@ -23,8 +23,9 @@ async def correlation_id_middleware(
     try:
         response = await call_next(request)
     finally:
-        # Garante que o header seja devolvido mesmo em exceções
-        response.headers["X-Correlation-ID"] = cid
+        # Guarda defensiva: response pode ser None se exceção ocorrer antes da criação
+        if response is not None:
+            response.headers["X-Correlation-ID"] = cid
         clear_correlation_id()
     return response
 

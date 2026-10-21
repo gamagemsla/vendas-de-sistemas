@@ -22,7 +22,7 @@ from vendas.interfaces.api.app import app
 
 
 def _make_session() -> Session:
-    db_url = settings.DATABASE_URL.replace("@postgres:", "@localhost:")
+    db_url = settings.DATABASE_URL  # Já aponta para vendas_db_test via conftest.py
     engine = create_engine(db_url, pool_pre_ping=True)
     Base.metadata.drop_all(bind=engine)
     # Clean up PostgreSQL ENUM types that persist in pg_type after drop_all
