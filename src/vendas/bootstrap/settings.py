@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     EVOLUTION_API_URL: str = "http://localhost:8080"
     EVOLUTION_API_KEY: str = ""
 
+    # Autenticação da API (tokens de desenvolvimento; sobrescrever em produção via .env)
+    API_ADMIN_TOKEN: str = "dev-admin-token"
+    API_OPERATOR_TOKEN: str = "dev-operator-token"
+
 
 def get_settings() -> Settings:
     """Retorna uma instância de Settings validada."""

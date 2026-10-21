@@ -692,26 +692,21 @@ class LegalBasisPort(Protocol):
 # =============================================================================
 
 __all__ = [
-    # Conversation Agent
     "AgentContext",
     "AgentDecision",
-    # Clock
+    "AuthContext",
+    "AuthPort",
     "Clock",
-    # Conversation
     "Conversation",
     "ConversationAgent",
     "ConversationFilter",
     "ConversationRepository",
-    # Lead Enricher
     "EnrichedLeadData",
-    # Base
     "Entity",
-    # Job Queue
     "Job",
     "JobQueue",
     "JobResult",
     "LeadEnricher",
-    # Lead
     "LeadFilter",
     "LeadRepository",
     "LeadSource",
@@ -721,16 +716,12 @@ __all__ = [
     "MessageChannel",
     "Money",
     "OutboxFilter",
-    # Outbox
     "OutboxMessage",
     "OutboxRepository",
-    # Lead Source
     "RawLead",
     "Repository",
-    # Message Channel
+    "Role",
     "SendResult",
-    # Referenced in policies
     "SuppressionListPort",
-    # Unit of Work
     "UnitOfWork",
 ]

@@ -153,9 +153,10 @@ def test_changes_write_knowledge_and_audit_logs() -> None:
 def test_catalog_routes_require_admin_or_auth() -> None:
     client = TestClient(app)
     admin_headers = {
-        "Authorization": "Bearer token",
-        "X-User-Role": "admin",
-        "X-User-Id": "admin-1",
+        "Authorization": "Bearer dev-admin-token",
+    }
+    operator_headers = {
+        "Authorization": "Bearer dev-operator-token",
     }
     service_payload = {"name": f"Servico API {uuid4()}", "description": "api route"}
     created = client.post("/catalog/services", json=service_payload, headers=admin_headers)
@@ -170,11 +171,7 @@ def test_catalog_routes_require_admin_or_auth() -> None:
             "valid_from": (datetime.now(UTC) - timedelta(days=1)).isoformat(),
             "valid_to": (datetime.now(UTC) + timedelta(days=10)).isoformat(),
         },
-        headers={
-            "Authorization": "Bearer token",
-            "X-User-Role": "operator",
-            "X-User-Id": "op-1",
-        },
+        headers=operator_headers,
     )
     assert forbidden.status_code == 403
 

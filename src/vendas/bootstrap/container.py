@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.bootstrap.settings import settings
 from vendas.domain.ports import Clock
+from vendas.domain.ports.auth import AuthPort
 from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
 from vendas.infrastructure.clock import SystemClock
@@ -35,6 +36,9 @@ class Container:
 
         # Ports implementations
         self.clock: Clock = SystemClock()
+        from vendas.infrastructure.auth import SettingsAuthAdapter
+
+        self.auth_port: AuthPort = SettingsAuthAdapter()
 
         unit_of_work_module = importlib.import_module(
             "vendas.infrastructure.persistence.unit_of_work"

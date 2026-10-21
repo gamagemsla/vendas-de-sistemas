@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, Response
 
 from vendas.bootstrap.logging import clear_correlation_id, set_correlation_id
 from vendas.bootstrap.settings import settings
+from vendas.domain.ports.auth import AuthPort
 from vendas.interfaces.api.routes.catalog import router as catalog_router
 from vendas.interfaces.api.routes.health import router as health_router
 
@@ -28,7 +29,7 @@ async def correlation_id_middleware(
     return response
 
 
-def create_app() -> FastAPI:
+def create_app(auth_port: AuthPort | None = None) -> FastAPI:
     app = FastAPI(title="Vendas API")
 
     # Middleware de Correlation ID (mais externo)
@@ -64,6 +65,11 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(catalog_router)
+
+    # Vincula porta de autenticação ao state da aplicação, se fornecida
+    if auth_port is not None:
+        app.state.auth_port = auth_port
+
     return app
 
 
