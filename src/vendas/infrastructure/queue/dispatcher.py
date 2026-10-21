@@ -47,6 +47,8 @@ class OutboxDispatcher:
                     if settings.DRY_RUN:
                         logger.info(
                             "dry_run_ativo_mensagem_simulada",
+                            outbox_id=item.id,
+                            event_type=item.event_type,
                             payload=validated_payload,
                             idempotency_key=item.idempotency_key,
                         )
