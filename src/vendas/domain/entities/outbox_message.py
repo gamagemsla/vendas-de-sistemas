@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -52,6 +52,8 @@ class OutboxMessage:
     event_type: str
     payload: dict[str, Any]
     idempotency_key: str
+    scheduled_at: datetime
+    created_at: datetime
     channel: str | None = None
     destination: str | None = None
     template_name: str | None = None
@@ -60,8 +62,6 @@ class OutboxMessage:
     max_attempts: int = 3
     status: OutboxStatus = OutboxStatus.PENDING
     last_error: str | None = None
-    scheduled_at: datetime = field(default_factory=datetime.utcnow)
-    created_at: datetime = field(default_factory=datetime.utcnow)
     processed_at: datetime | None = None
     provider_message_id: str | None = None
 
@@ -77,8 +77,11 @@ class OutboxMessage:
         template_params: dict[str, Any] | None = None,
         max_attempts: int = 3,
         scheduled_at: datetime | None = None,
+        at: datetime | None = None,
     ) -> OutboxMessage:
         """Factory para criar nova mensagem na outbox."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para create OutboxMessage")
         # Valida e normaliza o payload conforme o event_type
         validated_payload = validate_outbox_payload(event_type, payload)
 
@@ -93,8 +96,8 @@ class OutboxMessage:
             template_params=template_params,
             max_attempts=max_attempts,
             status=OutboxStatus.PENDING,
-            scheduled_at=scheduled_at or datetime.utcnow(),
-            created_at=datetime.utcnow(),
+            scheduled_at=scheduled_at or at,
+            created_at=at,
         )
 
     def is_due(self, at: datetime | None = None) -> bool:
@@ -106,30 +109,34 @@ class OutboxMessage:
         """Marca como sendo processada."""
         self.status = OutboxStatus.PROCESSING
 
-    def mark_sent(self, external_id: str | None = None) -> None:
+    def mark_sent(self, external_id: str | None = None, at: datetime | None = None) -> None:
         """Marca como enviada com sucesso."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para mark_sent")
         self.status = OutboxStatus.SENT
         self.attempts += 1
-        self.processed_at = datetime.utcnow()
+        self.processed_at = at
         self.last_error = None
         if external_id is not None:
             self.provider_message_id = external_id
 
-    def mark_failed(self, error: str, will_retry: bool) -> None:
+    def mark_failed(self, error: str, will_retry: bool, at: datetime | None = None) -> None:
         """Marca como falhada."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para mark_failed")
         self.attempts += 1
         self.last_error = error
 
         if self.attempts >= self.max_attempts:
             self.status = OutboxStatus.DEAD_LETTER
-            self.processed_at = datetime.utcnow()
+            self.processed_at = at
         elif will_retry:
             # Retorna para PENDING para retry
             self.status = OutboxStatus.PENDING
         else:
             # Falha permanente
             self.status = OutboxStatus.FAILED
-            self.processed_at = datetime.utcnow()
+            self.processed_at = at
 
     def can_retry(self) -> bool:
         """Verifica se pode fazer novo retry."""

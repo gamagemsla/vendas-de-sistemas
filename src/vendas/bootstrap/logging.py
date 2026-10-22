@@ -30,22 +30,35 @@ def _mask_value(value: str) -> str:
     return "****"
 
 
-def _recursive_mask(obj: Any) -> Any:
-    """Percorre dicts e listas recursivamente mascarando chaves sensíveis."""
+def _recursive_mask(obj: Any, memo: set[int] | None = None) -> Any:
+    """Percorre dicts e listas recursivamente mascarando chaves sensíveis com proteção contra loops."""
+    if memo is None:
+        memo = set()
+
+    obj_id = id(obj)
+    if obj_id in memo:
+        return "<circular reference>"
+
     if isinstance(obj, dict):
+        memo.add(obj_id)
         masked: dict[str, Any] = {}
         for k, v in obj.items():
             if isinstance(k, str) and any(p in k.lower() for p in _SENSITIVE_KEY_PATTERNS):
                 if isinstance(v, str):
                     masked[k] = _mask_value(v)
                 else:
-                    # Se não for string, mascara a representação
                     masked[k] = _mask_value(str(v))
             else:
-                masked[k] = _recursive_mask(v)
+                masked[k] = _recursive_mask(v, memo)
+        memo.remove(obj_id)
         return masked
+
     if isinstance(obj, list):
-        return [_recursive_mask(item) for item in obj]
+        memo.add(obj_id)
+        result = [_recursive_mask(item, memo) for item in obj]
+        memo.remove(obj_id)
+        return result
+
     return obj
 
 

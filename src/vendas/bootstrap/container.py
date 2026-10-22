@@ -11,9 +11,6 @@ from vendas.domain.ports import Clock
 from vendas.domain.ports.auth import AuthPort
 from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
-from vendas.infrastructure.clock import SystemClock
-from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
-from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 
 
 class Container:
@@ -35,6 +32,8 @@ class Container:
         self.LeadModel = orm_models.LeadModel
 
         # Ports implementations
+        from vendas.infrastructure.clock import SystemClock
+
         self.clock: Clock = SystemClock()
         from vendas.infrastructure.auth import SettingsAuthAdapter
 
@@ -44,10 +43,12 @@ class Container:
             "vendas.infrastructure.persistence.unit_of_work"
         )
         self.uow = unit_of_work_module.SQLAlchemyUnitOfWork(self.session_factory, self.clock)
-        self.catalog_repository_factory = lambda session: SqlAlchemyCatalogRepository(
-            session, self.clock
-        )
-        self.knowledge_base_factory = lambda session: SqlAlchemyKnowledgeBase(session)
+        self.catalog_repository_factory = lambda session: importlib.import_module(
+            "vendas.infrastructure.persistence.catalog_repository"
+        ).SqlAlchemyCatalogRepository(session, self.clock)
+        self.knowledge_base_factory = lambda session: importlib.import_module(
+            "vendas.infrastructure.knowledge_base"
+        ).SqlAlchemyKnowledgeBase(session)
 
     def make_dashboard_query(self, session: Session) -> Any:
         dashboard_query_module = importlib.import_module(
@@ -56,10 +57,14 @@ class Container:
         return dashboard_query_module.SqlAlchemyDashboardQuery(session)
 
     def get_catalog_repository(self, session: Session) -> CatalogRepository:
-        return SqlAlchemyCatalogRepository(session, self.clock)
+        return importlib.import_module(
+            "vendas.infrastructure.persistence.catalog_repository"
+        ).SqlAlchemyCatalogRepository(session, self.clock)
 
     def get_knowledge_base(self, session: Session) -> KnowledgeBasePort:
-        return SqlAlchemyKnowledgeBase(session)
+        return importlib.import_module(
+            "vendas.infrastructure.knowledge_base"
+        ).SqlAlchemyKnowledgeBase(session)
 
 
 container = Container()

@@ -8,12 +8,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class DomainEvent:
     """Evento base de domínio."""
 
+    occurred_at: datetime
     event_id: UUID = field(default_factory=uuid4)
-    occurred_at: datetime = field(default_factory=datetime.utcnow)
     aggregate_id: UUID | None = None
     aggregate_type: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
@@ -23,6 +23,7 @@ class DomainEvent:
 class LeadCreated(DomainEvent):
     """Evento disparado quando um Lead é criado."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     name: str = ""
     phone: str = ""
@@ -48,6 +49,7 @@ class LeadCreated(DomainEvent):
 class LeadStatusChanged(DomainEvent):
     """Evento disparado quando o status do Lead muda."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     previous_status: str = ""
     new_status: str = ""
@@ -69,6 +71,7 @@ class LeadStatusChanged(DomainEvent):
 class LeadEnriched(DomainEvent):
     """Evento disparado quando o Lead é enriquecido com dados externos."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     cnpj: str | None = None
     email: str | None = None
@@ -94,6 +97,7 @@ class LeadEnriched(DomainEvent):
 class LeadQualified(DomainEvent):
     """Evento disparado quando o Lead é qualificado."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     qualification_score: int = 0
     qualification_notes: str | None = None
@@ -113,6 +117,7 @@ class LeadQualified(DomainEvent):
 class LeadDisqualified(DomainEvent):
     """Evento disparado quando o Lead é desqualificado."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     reason: str = ""
     disqualification_code: str | None = None
@@ -132,6 +137,7 @@ class LeadDisqualified(DomainEvent):
 class LeadOptedOut(DomainEvent):
     """Evento disparado quando o Lead faz opt-out (terminal)."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     reason: str | None = None
     channel: str | None = None
@@ -151,6 +157,7 @@ class LeadOptedOut(DomainEvent):
 class LeadHandoff(DomainEvent):
     """Evento disparado quando o Lead é passado para vendas (handoff)."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     assigned_to: UUID | None = None
     handoff_notes: str | None = None
@@ -166,13 +173,14 @@ class LeadHandoff(DomainEvent):
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class LeadWon(DomainEvent):
     """Evento disparado quando o Lead fecha como ganho."""
 
+    occurred_at: datetime
+    closed_at: datetime
     aggregate_type: str = "Lead"
     deal_value: int = 0  # em centavos
-    closed_at: datetime = field(default_factory=datetime.utcnow)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -189,6 +197,7 @@ class LeadWon(DomainEvent):
 class LeadLost(DomainEvent):
     """Evento disparado quando o Lead fecha como perdido."""
 
+    occurred_at: datetime
     aggregate_type: str = "Lead"
     loss_reason: str = ""
     loss_code: str | None = None
@@ -208,6 +217,7 @@ class LeadLost(DomainEvent):
 class ConversationStarted(DomainEvent):
     """Evento disparado quando uma conversa é iniciada."""
 
+    occurred_at: datetime
     aggregate_type: str = "Conversation"
     channel: str = ""
     contact_phone: str = ""
@@ -227,6 +237,7 @@ class ConversationStarted(DomainEvent):
 class MessageReceived(DomainEvent):
     """Evento disparado quando uma mensagem é recebida."""
 
+    occurred_at: datetime
     aggregate_type: str = "Conversation"
     message_id: UUID = field(default_factory=uuid4)
     direction: str = "inbound"  # inbound | outbound
@@ -250,6 +261,7 @@ class MessageReceived(DomainEvent):
 class ConversationStateChanged(DomainEvent):
     """Evento disparado quando o estado da conversa muda."""
 
+    occurred_at: datetime
     aggregate_type: str = "Conversation"
     previous_state: str = ""
     new_state: str = ""

@@ -1,19 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from vendas.domain.ports import Clock
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.orm_models import CatalogPrice, CatalogService, FaqEntry
 
 
 class SqlAlchemyKnowledgeBase:
     """Base de conhecimento materializada em SQLAlchemy com invalidação explícita de cache."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
         self._cache: dict[Any, Any] = {}
         self._version = 0
 
@@ -22,7 +25,7 @@ class SqlAlchemyKnowledgeBase:
         self._version += 1
 
     def _now(self, at: datetime | None = None) -> datetime:
-        return at or datetime.now(UTC)
+        return at or self._clock.now()
 
     def _active_prices(
         self, service_id: str | UUID | None = None, at: datetime | None = None

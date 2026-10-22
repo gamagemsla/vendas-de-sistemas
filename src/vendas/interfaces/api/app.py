@@ -20,6 +20,7 @@ async def correlation_id_middleware(
     """Middleware que garante correlation_id em todos os logs e no header de resposta."""
     incoming_cid = request.headers.get("X-Correlation-ID")
     cid = set_correlation_id(incoming_cid)
+    response: Response | None = None
     try:
         response = await call_next(request)
     finally:
@@ -27,6 +28,7 @@ async def correlation_id_middleware(
         if response is not None:
             response.headers["X-Correlation-ID"] = cid
         clear_correlation_id()
+    assert response is not None
     return response
 
 

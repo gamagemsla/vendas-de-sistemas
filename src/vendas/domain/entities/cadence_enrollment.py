@@ -42,6 +42,8 @@ class CadenceEnrollment:
     id: UUID
     lead_id: UUID
     cadence_name: str
+    created_at: datetime
+    updated_at: datetime
     current_step: int = 0
     status: EnrollmentStatus = EnrollmentStatus.ACTIVE
     next_run_at: datetime | None = None
@@ -49,15 +51,19 @@ class CadenceEnrollment:
     completed_at: datetime | None = None
     cancelled_at: datetime | None = None
     cancel_reason: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
     events: list[DomainEvent] = field(default_factory=list, repr=False)
 
     @classmethod
     def create(
-        cls, lead_id: UUID, cadence_name: str, next_run_at: datetime | None = None
+        cls,
+        lead_id: UUID,
+        cadence_name: str,
+        next_run_at: datetime | None = None,
+        at: datetime | None = None,
     ) -> CadenceEnrollment:
         """Factory para criar nova inscrição em cadência."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para criar CadenceEnrollment")
         return cls(
             id=uuid4(),
             lead_id=lead_id,
@@ -65,52 +71,64 @@ class CadenceEnrollment:
             current_step=0,
             status=EnrollmentStatus.ACTIVE,
             next_run_at=next_run_at,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=at,
+            updated_at=at,
         )
 
-    def advance_step(self, next_step: int, next_run_at: datetime | None = None) -> None:
+    def advance_step(
+        self, next_step: int, next_run_at: datetime | None = None, at: datetime | None = None
+    ) -> None:
         """Avança para próximo passo da cadência."""
         if self.status != EnrollmentStatus.ACTIVE:
             raise ValueError(f"Não é possível avançar passo em status {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para advance_step")
 
         self.current_step = next_step
-        self.last_step_at = datetime.utcnow()
+        self.last_step_at = at
         self.next_run_at = next_run_at
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-    def pause(self) -> None:
+    def pause(self, at: datetime | None = None) -> None:
         """Pausa a cadência."""
         if self.status == EnrollmentStatus.PAUSED:
             return
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para pause")
         self.status = EnrollmentStatus.PAUSED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-    def resume(self) -> None:
+    def resume(self, at: datetime | None = None) -> None:
         """Retoma cadência pausada."""
         if self.status != EnrollmentStatus.PAUSED:
             raise ValueError(f"Só é possível retomar de PAUSED, atual: {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para resume")
         self.status = EnrollmentStatus.ACTIVE
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-    def complete(self) -> None:
+    def complete(self, at: datetime | None = None) -> None:
         """Marca cadência como concluída."""
         if self.status not in (EnrollmentStatus.ACTIVE, EnrollmentStatus.PAUSED):
             raise ValueError(
                 f"Só é possível completar de ACTIVE/PAUSED, atual: {self.status.value}"
             )
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para complete")
         self.status = EnrollmentStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = at
+        self.updated_at = at
 
-    def cancel(self, reason: str) -> None:
+    def cancel(self, reason: str, at: datetime | None = None) -> None:
         """Cancela a inscrição em cadência."""
         if self.status == EnrollmentStatus.CANCELLED:
             return
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para cancel")
         self.status = EnrollmentStatus.CANCELLED
-        self.cancelled_at = datetime.utcnow()
+        self.cancelled_at = at
         self.cancel_reason = reason.strip() if reason and reason.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
     def is_due(self, at: datetime) -> bool:
         """Verifica se o passo próximo está vencido."""

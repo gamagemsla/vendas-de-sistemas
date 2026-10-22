@@ -147,10 +147,12 @@ class Conversation:
         self.last_message_at = timestamp
         self.updated_at = timestamp
 
-    def trigger_handoff(self, reason: str) -> None:
+    def trigger_handoff(self, reason: str, at: datetime | None = None) -> None:
         """Marca a conversa para handoff humano."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para trigger_handoff")
         self.state = "handoff"
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
 
 @dataclass(frozen=True, slots=True)
@@ -530,20 +532,8 @@ class ConversationAgent(Protocol):
         """Nome do agente (ex: 'gemini')."""
         ...
 
-    async def decide(self, context: AgentContext) -> AgentDecision:
+    def decide(self, context: AgentContext) -> AgentDecision:
         """Toma decisão baseada no contexto da conversa."""
-        ...
-
-    async def classify_intent(self, text: str, context: AgentContext) -> dict[str, Any]:
-        """Classifica intenção da mensagem do lead."""
-        ...
-
-    async def extract_entities(self, text: str) -> dict[str, Any]:
-        """Extrai entidades (CNPJ, e-mail, valores, datas, etc.) do texto."""
-        ...
-
-    async def health_check(self) -> bool:
-        """Verifica se o agente está disponível."""
         ...
 
 
@@ -688,6 +678,12 @@ class LegalBasisPort(Protocol):
 
 
 # =============================================================================
+# Conversation Lock Port
+# =============================================================================
+
+from .conversation_lock import ConversationLock
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -700,6 +696,7 @@ __all__ = [
     "Conversation",
     "ConversationAgent",
     "ConversationFilter",
+    "ConversationLock",
     "ConversationRepository",
     "EnrichedLeadData",
     "Entity",

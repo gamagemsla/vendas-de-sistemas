@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
@@ -44,6 +44,8 @@ class Booking:
     lead_id: UUID
     scheduled_at: datetime
     timezone: str
+    created_at: datetime
+    updated_at: datetime
     duration_minutes: int = 30
     title: str = ""
     notes: str | None = None
@@ -53,8 +55,6 @@ class Booking:
     completed_at: datetime | None = None
     cancelled_at: datetime | None = None
     cancellation_reason: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
 
     @classmethod
     def create(
@@ -65,8 +65,11 @@ class Booking:
         duration_minutes: int = 30,
         title: str = "",
         assigned_to: UUID | None = None,
+        at: datetime | None = None,
     ) -> Booking:
         """Factory para criar novo agendamento."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para criar Booking")
         return cls(
             id=uuid4(),
             lead_id=lead_id,
@@ -76,53 +79,59 @@ class Booking:
             title=title.strip() if title and title.strip() else "",
             assigned_to=assigned_to,
             status=BookingStatus.CONFIRMED,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=at,
+            updated_at=at,
         )
 
-    def reschedule(self, new_scheduled_at: datetime) -> None:
+    def reschedule(self, new_scheduled_at: datetime, at: datetime | None = None) -> None:
         """Reagenda para nova data/hora."""
         if self.status == BookingStatus.CANCELLED:
             raise ValueError("Não é possível reagendar agendamento cancelado")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para reagendar Booking")
 
         self.scheduled_at = new_scheduled_at
         self.status = BookingStatus.RESCHEDULED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-    def complete(self) -> None:
+    def complete(self, at: datetime | None = None) -> None:
         """Marca como realizada."""
         if self.status == BookingStatus.CANCELLED:
             raise ValueError("Não é possível completar agendamento cancelado")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para completar Booking")
 
         self.status = BookingStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = at
+        self.updated_at = at
 
-    def no_show(self) -> None:
+    def no_show(self, at: datetime | None = None) -> None:
         """Marca como não comparecido."""
         if self.status == BookingStatus.CANCELLED:
             raise ValueError("Não é possível marcar como no-show um agendamento cancelado")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para no-show Booking")
 
         self.status = BookingStatus.NO_SHOW
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = at
+        self.updated_at = at
 
-    def cancel(self, reason: str) -> None:
+    def cancel(self, reason: str, at: datetime | None = None) -> None:
         """Cancela o agendamento."""
         if self.status in (BookingStatus.COMPLETED, BookingStatus.NO_SHOW):
             raise ValueError(f"Não é possível cancelar agendamento em status {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para cancelar Booking")
 
         self.status = BookingStatus.CANCELLED
-        self.cancelled_at = datetime.utcnow()
+        self.cancelled_at = at
         self.cancellation_reason = reason.strip() if reason and reason.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-    def is_in_future(self, at: datetime | None = None) -> bool:
+    def is_in_future(self, at: datetime) -> bool:
         """Verifica se o agendamento é no futuro."""
-        now = at or datetime.utcnow()
-        return self.scheduled_at > now
+        return self.scheduled_at > at
 
-    def is_overdue(self, at: datetime | None = None) -> bool:
+    def is_overdue(self, at: datetime) -> bool:
         """Verifica se o agendamento já passou."""
-        now = at or datetime.utcnow()
-        return self.scheduled_at < now
+        return self.scheduled_at < at

@@ -13,6 +13,7 @@ class UnitOfWork(Protocol):
     inbound_events: Any
     suppression: Any
     catalog: CatalogRepository
+    session: Any
 
     def __enter__(self) -> Self: ...
 

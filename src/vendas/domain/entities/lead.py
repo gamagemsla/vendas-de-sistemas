@@ -113,6 +113,8 @@ class Lead:
     phone: Phone
     cnpj: Cnpj | None
     email: Email | None
+    created_at: datetime
+    updated_at: datetime
     status: LeadStatus = LeadStatus.NEW
     company_name: str | None = None
     company_size: str | None = None
@@ -128,8 +130,6 @@ class Lead:
     disqualification_code: str | None = None
     opt_out_reason: str | None = None
     opt_out_channel: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
     events: list[DomainEvent] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
@@ -146,6 +146,7 @@ class Lead:
         phone: str | Phone,
         cnpj: str | Cnpj | None = None,
         email: str | Email | None = None,
+        at: datetime | None = None,
     ) -> Lead:
         """Factory method para criar um novo Lead.
 
@@ -154,10 +155,13 @@ class Lead:
             phone: Telefone (string ou Phone VO).
             cnpj: CNPJ (string ou Cnpj VO, opcional).
             email: E-mail (string ou Email VO, opcional).
+            at: Timestamp de criação (obrigatório).
 
         Returns:
             Nova instância de Lead com status NEW e evento LeadCreated.
         """
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para criar Lead")
         phone_vo = phone if isinstance(phone, Phone) else Phone(phone)
         cnpj_vo = cnpj if isinstance(cnpj, Cnpj) else (Cnpj(cnpj) if cnpj else None)
         email_vo = email if isinstance(email, Email) else (Email(email) if email else None)
@@ -169,6 +173,8 @@ class Lead:
             cnpj=cnpj_vo,
             email=email_vo,
             status=LeadStatus.NEW,
+            created_at=at,
+            updated_at=at,
         )
 
         lead._add_event(
@@ -179,6 +185,7 @@ class Lead:
                 cnpj=str(lead.cnpj) if lead.cnpj else None,
                 email=str(lead.email) if lead.email else None,
                 status=lead.status.value,
+                occurred_at=at,
             )
         )
 
@@ -205,29 +212,38 @@ class Lead:
             industry=enrichment_data.get("industry"),
         )
 
-    def mark_as_eligible(self) -> None:
+    def mark_as_eligible(self, at: datetime | None = None) -> None:
         """Transition lead to ELIGIBLE status if currently ENRICHED."""
         if self.status == LeadStatus.ENRICHED:
-            self._transition_to(LeadStatus.ELIGIBLE, reason="Lead marcado como elegível")
+            if at is None:
+                raise ValueError("Timestamp 'at' é obrigatório para mark_as_eligible")
+            self._transition_to(LeadStatus.ELIGIBLE, reason="Lead marcado como elegível", at=at)
 
-    def mark_as_opted_out(self, reason: str | None = None, channel: str | None = None) -> None:
+    def mark_as_opted_out(
+        self, reason: str | None = None, channel: str | None = None, at: datetime | None = None
+    ) -> None:
         """Alias for opt_out() for backward compatibility."""
-        self.opt_out(reason=reason, channel=channel)
+        self.opt_out(reason=reason, channel=channel, at=at)
 
     def _add_event(self, event: DomainEvent) -> None:
         """Adiciona evento à lista de eventos pendentes."""
         self.events.append(event)
 
-    def _transition_to(self, new_status: LeadStatus, reason: str | None = None) -> None:
+    def _transition_to(
+        self, new_status: LeadStatus, reason: str | None = None, at: datetime | None = None
+    ) -> None:
         """Realiza transição de estado com validação.
 
         Args:
             new_status: Novo estado para transição.
             reason: Motivo da transição (opcional).
+            at: Timestamp da transição (obrigatório).
 
         Raises:
             ValueError: Se a transição não for permitida.
         """
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para transição de estado")
         if self.status == new_status:
             return
 
@@ -246,7 +262,7 @@ class Lead:
 
         previous_status = self.status
         self.status = new_status
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
         self._add_event(
             LeadStatusChanged(
@@ -254,6 +270,7 @@ class Lead:
                 previous_status=previous_status.value,
                 new_status=new_status.value,
                 reason=reason,
+                occurred_at=at,
             )
         )
 
@@ -264,11 +281,14 @@ class Lead:
         company_name: str | None = None,
         company_size: str | None = None,
         industry: str | None = None,
+        at: datetime | None = None,
     ) -> None:
         if self.status not in (LeadStatus.NEW, LeadStatus.ENRICHED):
             raise ValueError(
                 f"Enriquecimento só permitido em NEW ou ENRICHED, atual: {self.status.value}"
             )
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para enrich")
 
         if cnpj is not None:
             self.cnpj = cnpj if isinstance(cnpj, Cnpj) else Cnpj(cnpj)
@@ -281,10 +301,12 @@ class Lead:
         if industry is not None:
             self.industry = industry.strip() if industry.strip() else None
 
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
         if self.status == LeadStatus.NEW:
-            self._transition_to(LeadStatus.ENRICHED, reason="Lead enriquecido com dados externos")
+            self._transition_to(
+                LeadStatus.ENRICHED, reason="Lead enriquecido com dados externos", at=at
+            )
 
         self._add_event(
             LeadEnriched(
@@ -294,60 +316,73 @@ class Lead:
                 company_name=self.company_name,
                 company_size=self.company_size,
                 industry=self.industry,
+                occurred_at=at,
             )
         )
 
-    def qualify(self, score: int, notes: str | None = None) -> None:
+    def qualify(self, score: int, notes: str | None = None, at: datetime | None = None) -> None:
         if self.status != LeadStatus.QUALIFYING:
             raise ValueError(f"Qualificação só permitida em QUALIFYING, atual: {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para qualify")
 
         if not 0 <= score <= 100:
             raise ValueError("Score deve estar entre 0 e 100")
 
         self.qualification_score = score
         self.qualification_notes = notes.strip() if notes and notes.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-        self._transition_to(LeadStatus.QUALIFIED, reason=f"Lead qualificado com score {score}")
+        self._transition_to(
+            LeadStatus.QUALIFIED, reason=f"Lead qualificado com score {score}", at=at
+        )
 
         self._add_event(
             LeadQualified(
                 aggregate_id=self.id,
                 qualification_score=score,
                 qualification_notes=self.qualification_notes,
+                occurred_at=at,
             )
         )
 
-    def disqualify(self, reason: str, code: str | None = None) -> None:
+    def disqualify(self, reason: str, code: str | None = None, at: datetime | None = None) -> None:
         if self.status in TERMINAL_STATES:
             raise ValueError(
                 f"Não é possível desqualificar lead em estado terminal: {self.status.value}"
             )
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para disqualify")
 
         if not reason or not reason.strip():
             raise ValueError("Motivo da desqualificação é obrigatório")
 
         self.disqualification_reason = reason.strip()
         self.disqualification_code = code.strip() if code and code.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-        self._transition_to(LeadStatus.DISQUALIFIED, reason=reason.strip())
+        self._transition_to(LeadStatus.DISQUALIFIED, reason=reason.strip(), at=at)
 
         self._add_event(
             LeadDisqualified(
                 aggregate_id=self.id,
                 reason=reason.strip(),
                 disqualification_code=self.disqualification_code,
+                occurred_at=at,
             )
         )
 
-    def opt_out(self, reason: str | None = None, channel: str | None = None) -> None:
+    def opt_out(
+        self, reason: str | None = None, channel: str | None = None, at: datetime | None = None
+    ) -> None:
         if self.status == LeadStatus.OPTED_OUT:
             return
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para opt_out")
 
         self.opt_out_reason = reason.strip() if reason and reason.strip() else None
         self.opt_out_channel = channel.strip() if channel and channel.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
         previous_status = self.status
         self.status = LeadStatus.OPTED_OUT
@@ -358,6 +393,7 @@ class Lead:
                 previous_status=previous_status.value,
                 new_status=LeadStatus.OPTED_OUT.value,
                 reason=reason,
+                occurred_at=at,
             )
         )
 
@@ -366,91 +402,111 @@ class Lead:
                 aggregate_id=self.id,
                 reason=self.opt_out_reason,
                 channel=self.opt_out_channel,
+                occurred_at=at,
             )
         )
 
-    def handoff(self, assigned_to: UUID, notes: str | None = None) -> None:
+    def handoff(
+        self, assigned_to: UUID, notes: str | None = None, at: datetime | None = None
+    ) -> None:
         if self.status != LeadStatus.QUALIFIED:
             raise ValueError(f"Handoff só permitido em QUALIFIED, atual: {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para handoff")
 
         self.assigned_to = assigned_to
         self.handoff_notes = notes.strip() if notes and notes.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-        self._transition_to(LeadStatus.HANDOFF, reason=f"Handoff para vendedor {assigned_to}")
+        self._transition_to(
+            LeadStatus.HANDOFF, reason=f"Handoff para vendedor {assigned_to}", at=at
+        )
 
         self._add_event(
             LeadHandoff(
                 aggregate_id=self.id,
                 assigned_to=assigned_to,
                 handoff_notes=self.handoff_notes,
+                occurred_at=at,
             )
         )
 
-    def win(self, deal_value: int) -> None:
+    def win(self, deal_value: int, at: datetime | None = None) -> None:
         if self.status != LeadStatus.HANDOFF:
             raise ValueError(f"Win só permitido em HANDOFF, atual: {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para win")
 
         if deal_value < 0:
             raise ValueError("Valor do negócio não pode ser negativo")
 
         self.deal_value = deal_value
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-        self._transition_to(LeadStatus.WON, reason=f"Negócio fechado: {deal_value} centavos")
+        self._transition_to(LeadStatus.WON, reason=f"Negócio fechado: {deal_value} centavos", at=at)
 
         self._add_event(
             LeadWon(
                 aggregate_id=self.id,
                 deal_value=deal_value,
-                closed_at=datetime.utcnow(),
+                closed_at=at,
+                occurred_at=at,
             )
         )
 
-    def lose(self, reason: str, code: str | None = None) -> None:
+    def lose(self, reason: str, code: str | None = None, at: datetime | None = None) -> None:
         if self.status != LeadStatus.HANDOFF:
             raise ValueError(f"Loss só permitido em HANDOFF, atual: {self.status.value}")
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para lose")
 
         if not reason or not reason.strip():
             raise ValueError("Motivo da perda é obrigatório")
 
         self.loss_reason = reason.strip()
         self.loss_code = code.strip() if code and code.strip() else None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = at
 
-        self._transition_to(LeadStatus.LOST, reason=reason.strip())
+        self._transition_to(LeadStatus.LOST, reason=reason.strip(), at=at)
 
         self._add_event(
             LeadLost(
                 aggregate_id=self.id,
                 loss_reason=reason.strip(),
                 loss_code=self.loss_code,
+                occurred_at=at,
             )
         )
 
-    def start_cadence(self) -> None:
+    def start_cadence(self, at: datetime | None = None) -> None:
         if self.status != LeadStatus.ELIGIBLE:
             raise ValueError(
                 f"Iniciar cadência só permitido em ELIGIBLE, atual: {self.status.value}"
             )
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para start_cadence")
 
-        self._transition_to(LeadStatus.IN_CADENCE, reason="Cadência de prospecção iniciada")
+        self._transition_to(LeadStatus.IN_CADENCE, reason="Cadência de prospecção iniciada", at=at)
 
-    def register_reply(self) -> None:
+    def register_reply(self, at: datetime | None = None) -> None:
         if self.status != LeadStatus.IN_CADENCE:
             raise ValueError(
                 f"Registrar resposta só permitido em IN_CADENCE, atual: {self.status.value}"
             )
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para register_reply")
 
-        self._transition_to(LeadStatus.REPLIED, reason="Lead respondeu à prospecção")
+        self._transition_to(LeadStatus.REPLIED, reason="Lead respondeu à prospecção", at=at)
 
-    def start_qualification(self) -> None:
+    def start_qualification(self, at: datetime | None = None) -> None:
         if self.status != LeadStatus.REPLIED:
             raise ValueError(
                 f"Iniciar qualificação só permitido em REPLIED, atual: {self.status.value}"
             )
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para start_qualification")
 
-        self._transition_to(LeadStatus.QUALIFYING, reason="Qualificação iniciada")
+        self._transition_to(LeadStatus.QUALIFYING, reason="Qualificação iniciada", at=at)
 
     def is_terminal(self) -> bool:
         return self.status in TERMINAL_STATES

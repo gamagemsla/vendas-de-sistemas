@@ -34,7 +34,7 @@ class ProcessCadenceStepCommand:
 
                 # Se o lead não existe, deu opt-out ou foi suprimido, cancela a cadência dele
                 if not lead or lead.status == "OPTED_OUT":
-                    enrollment.cancel("lead_nao_encontrado_ou_opted_out")
+                    enrollment.cancel("lead_nao_encontrado_ou_opted_out", at=now)
                     uow.enrollments.save(enrollment)
                     continue
 
@@ -53,7 +53,7 @@ class ProcessCadenceStepCommand:
                     and uow.suppression
                     and uow.suppression.is_suppressed(phone_e164)
                 ):
-                    enrollment.cancel("telefone_na_lista_supressao")
+                    enrollment.cancel("telefone_na_lista_supressao", at=now)
                     uow.enrollments.save(enrollment)
                     logger.info(
                         "envio_bloqueado_supressao",
@@ -81,7 +81,7 @@ class ProcessCadenceStepCommand:
 
                 # Avança a cadência para o próximo intervalo/passo
                 next_step = enrollment.current_step + 1
-                enrollment.advance_step(next_step=next_step, next_run_at=now)
+                enrollment.advance_step(next_step=next_step, next_run_at=now, at=now)
                 uow.enrollments.save(enrollment)
                 processed_count += 1
 

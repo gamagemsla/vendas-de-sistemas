@@ -61,3 +61,40 @@ class FakeClock:
     def advance_days(self, days: int) -> None:
         """Avança o tempo em dias."""
         self._time += timedelta(days=days)
+
+
+import threading
+from contextlib import AbstractContextManager
+from types import TracebackType
+from typing import ClassVar
+from uuid import UUID
+
+from vendas.domain.ports import ConversationLock
+
+
+class _InMemoryLockContext(AbstractContextManager[None]):
+    def __init__(self, lock: threading.Lock) -> None:
+        self._lock = lock
+
+    def __enter__(self) -> None:
+        self._lock.acquire()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self._lock.release()
+
+
+class InMemoryConversationLock(ConversationLock):
+    """Fake lock em memória para testes unitários."""
+
+    _locks: ClassVar[dict[UUID, threading.Lock]] = {}
+    _global_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    def acquire(self, lead_id: UUID) -> AbstractContextManager[None]:
+        with self._global_lock:
+            lock = self._locks.setdefault(lead_id, threading.Lock())
+        return _InMemoryLockContext(lock)

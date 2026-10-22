@@ -1,6 +1,5 @@
 import streamlit as st
 
-from vendas.application.queries.overview_kpis import GetOverviewKPIsQuery
 from vendas.bootstrap.container import container
 
 # Configuração da Página
@@ -36,10 +35,8 @@ tab_visao, tab_leads, tab_fila, tab_atendimento = st.tabs(
 )
 
 # Busca de Dados Segura via aplicação (Read Model)
-session = container.session_factory()
-query_service = GetOverviewKPIsQuery(container.make_dashboard_query(session))
+query_service = container.get_overview_kpis_query()
 kpis = query_service.execute()
-session.close()
 
 # -------------------------------------------------------------
 # ABA 1: VISÃO GERAL

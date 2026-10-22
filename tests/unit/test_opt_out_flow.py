@@ -1,8 +1,9 @@
 """Testes unitários para o fluxo completo de Opt-out e Supressão."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
-from tests.fakes.fakes import FakeClock, InMemoryLeadRepository
+from tests.fakes.fakes import FakeClock, InMemoryConversationLock, InMemoryLeadRepository
 from vendas.application.commands.handle_inbound import HandleInboundCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, EnrollmentStatus
@@ -104,6 +105,8 @@ class FakeUoW:
         self.outbox = outbox
         self.inbound_events = None
         self.conversations = None
+        # Dummy session for lock factory compatibility
+        self.session = object()
 
     def __enter__(self):
         return self
@@ -132,6 +135,7 @@ class TestOptOutFlow:
             phone=Phone("+5511999999999"),
             cnpj=None,
             email=None,
+            at=self.clock.now(),
         )
         self.leads.add(self.lead)
 
@@ -140,6 +144,7 @@ class TestOptOutFlow:
             lead_id=self.lead.id,
             cadence_name="test_cadence",
             next_run_at=self.clock.now(),
+            at=self.clock.now(),
         )
         self.enrollments.add(self.enrollment)
 
@@ -147,13 +152,20 @@ class TestOptOutFlow:
         """Mensagem de opt-out registra na suppression_list e marca lead como OPTED_OUT."""
         # Arrange
         agent = None  # not used because opt-out returns early
-        command = HandleInboundCommand(uow=self.uow, agent=agent, clock=self.clock)
+        command = HandleInboundCommand(
+            uow=self.uow,
+            agent=agent,
+            knowledge_base=MagicMock(),
+            clock=self.clock,
+            conversation_lock_factory=lambda _session: InMemoryConversationLock(),
+        )
 
         # Act
         command.execute(
             sender_phone="+5511999999999",
             message_text="PARAR",
             provider_message_id="msg-1",
+            at=self.clock.now(),
         )
 
         # Assert
@@ -176,9 +188,9 @@ class TestOptOutFlow:
 
         # Lead status is still IN_CADENCE (not OPTED_OUT)
         # Need to transition through proper states: NEW -> ENRICHED -> ELIGIBLE -> IN_CADENCE
-        self.lead.enrich(company_name="Test Company")
-        self.lead.mark_as_eligible()
-        self.lead.start_cadence()
+        self.lead.enrich(company_name="Test Company", at=self.clock.now())
+        self.lead.mark_as_eligible(at=self.clock.now())
+        self.lead.start_cadence(at=self.clock.now())
         self.leads.save(self.lead)
 
         send_window_policy = SendWindowPolicy(clock=self.clock)
@@ -202,9 +214,9 @@ class TestOptOutFlow:
         """process_cadence_step enfileira mensagem quando telefone NÃO está na suppression_list."""
         # Arrange: lead is IN_CADENCE, no suppression
         # Need to transition through proper states: NEW -> ENRICHED -> ELIGIBLE -> IN_CADENCE
-        self.lead.enrich(company_name="Test Company")
-        self.lead.mark_as_eligible()
-        self.lead.start_cadence()
+        self.lead.enrich(company_name="Test Company", at=self.clock.now())
+        self.lead.mark_as_eligible(at=self.clock.now())
+        self.lead.start_cadence(at=self.clock.now())
         self.leads.save(self.lead)
 
         send_window_policy = SendWindowPolicy(clock=self.clock)

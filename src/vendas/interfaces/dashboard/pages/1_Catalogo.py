@@ -3,6 +3,8 @@ import os
 import httpx
 import streamlit as st
 
+from vendas.bootstrap.container import container
+
 st.set_page_config(
     page_title="Gestão de Catálogo - Vendas B2B",
     layout="wide",
@@ -50,25 +52,17 @@ question = st.text_input(
 )
 if question:
     try:
-        response = httpx.post(
-            f"{API_BASE_URL}/catalog/preview",
-            json={"question": question},
-            headers=HEADERS,
-            timeout=10,
-        )
-        response.raise_for_status()
-        st.json(response.json())
-    except httpx.HTTPError as exc:
+        preview_query = container.get_catalog_preview_query()
+        result = preview_query.execute(question)
+        st.json(result)
+    except Exception as exc:  # noqa: BLE001
         st.warning(f"Preview indisponível: {exc}")
 
 st.markdown("---")
 
-try:
-    response = httpx.get(f"{API_BASE_URL}/catalog/services", headers=HEADERS, timeout=10)
-    response.raise_for_status()
-    items = response.json()
-except httpx.HTTPError:
-    items = []
+# Listagem via application query
+list_query = container.get_list_catalog_services_query()
+items = list_query.execute()
 
 if not items:
     st.info("Nenhum item cadastrado no catálogo até o momento.")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -29,10 +29,10 @@ class InboundEvent:
     provider_event_id: str
     event_type: str
     payload: dict[str, Any]
+    created_at: datetime
     processed: bool = False
     processed_at: datetime | None = None
     error_message: str | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
 
     @classmethod
     def create(
@@ -41,8 +41,11 @@ class InboundEvent:
         provider_event_id: str,
         event_type: str,
         payload: dict[str, Any],
+        at: datetime | None = None,
     ) -> InboundEvent:
         """Factory para criar novo evento de entrada."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para create InboundEvent")
         return cls(
             id=uuid4(),
             provider_name=provider_name,
@@ -52,19 +55,23 @@ class InboundEvent:
             processed=False,
             processed_at=None,
             error_message=None,
-            created_at=datetime.utcnow(),
+            created_at=at,
         )
 
-    def mark_as_processed(self) -> None:
+    def mark_as_processed(self, at: datetime | None = None) -> None:
         """Marca evento como processado com sucesso."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para mark_as_processed")
         self.processed = True
-        self.processed_at = datetime.utcnow()
+        self.processed_at = at
         self.error_message = None
 
-    def mark_as_failed(self, error: str) -> None:
+    def mark_as_failed(self, error: str, at: datetime | None = None) -> None:
         """Marca evento como falhado durante processamento."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para mark_as_failed")
         self.processed = True
-        self.processed_at = datetime.utcnow()
+        self.processed_at = at
         self.error_message = error.strip() if error and error.strip() else None
 
     def is_duplicate(self, other: InboundEvent) -> bool:
