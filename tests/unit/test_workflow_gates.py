@@ -8,39 +8,39 @@ from vendas.infrastructure.channels.telegram_notifier import TelegramNotifier
 
 
 def test_opt_out_intercepted_before_ai():
-            """Garante que o opt-out é detectado e bloqueia o lead imediatamente sem acionar o agente de IA."""
-            uow = MagicMock()
-            # Mágica do mock: faz o context manager (with) retornar o próprio uow configurado
-            uow.__enter__.return_value = uow
+    """Garante que o opt-out é detectado e bloqueia o lead imediatamente sem acionar o agente de IA."""
+    uow = MagicMock()
+    # Mágica do mock: faz o context manager (with) retornar o próprio uow configurado
+    uow.__enter__.return_value = uow
 
-            agent = MagicMock()
-            clock = MagicMock()
+    agent = MagicMock()
+    clock = MagicMock()
 
-            inbound_mock = MagicMock()
-            inbound_mock.exists.return_value = False
-            uow.inbound_events = inbound_mock
+    inbound_mock = MagicMock()
+    inbound_mock.exists.return_value = False
+    uow.inbound_events = inbound_mock
 
-            lead_mock = MagicMock()
-            lead_mock.status = "NEW"
-            uow.leads.find_by_dedupe_key.return_value = lead_mock
+    lead_mock = MagicMock()
+    lead_mock.status = "NEW"
+    uow.leads.find_by_dedupe_key.return_value = lead_mock
 
-        command = HandleInboundCommand(
-                uow=uow,
-                agent=agent,
-                knowledge_base=MagicMock(),
-                clock=clock,
-                conversation_lock_factory=lambda _session: InMemoryConversationLock(),
-            )
+    command = HandleInboundCommand(
+        uow=uow,
+        agent=agent,
+        knowledge_base=MagicMock(),
+        clock=clock,
+        conversation_lock_factory=lambda _session: InMemoryConversationLock(),
+    )
 
-            command.execute(
-                sender_phone="+5511999999999",
-                message_text="SAIR",
-                provider_message_id="msg-123",
-            )
+    command.execute(
+        sender_phone="+5511999999999",
+        message_text="SAIR",
+        provider_message_id="msg-123",
+    )
 
-            lead_mock.mark_as_opted_out.assert_called_once()
-            agent.decide.assert_not_called()
-            uow.commit.assert_called()
+    lead_mock.mark_as_opted_out.assert_called_once()
+    agent.decide.assert_not_called()
+    uow.commit.assert_called()
 
 
 def test_inbound_webhook_deduplication():

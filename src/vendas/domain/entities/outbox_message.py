@@ -100,10 +100,9 @@ class OutboxMessage:
             created_at=at,
         )
 
-    def is_due(self, at: datetime | None = None) -> bool:
+    def is_due(self, at: datetime) -> bool:
         """Verifica se está vencida para processamento."""
-        now = at or datetime.utcnow()
-        return self.status == OutboxStatus.PENDING and now >= self.scheduled_at
+        return self.status == OutboxStatus.PENDING and at >= self.scheduled_at
 
     def mark_processing(self) -> None:
         """Marca como sendo processada."""

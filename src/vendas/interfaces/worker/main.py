@@ -1,12 +1,15 @@
 """Worker de segundo plano para processar cadências e despachar outbox."""
 
+from __future__ import annotations
+
 import signal
 import sys
 import time
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import structlog
 
+from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.bootstrap.container import container
 from vendas.bootstrap.logging import clear_correlation_id, configure_logging, set_correlation_id
 from vendas.bootstrap.settings import settings
@@ -22,13 +25,19 @@ class Worker:
         poll_interval_seconds: int | None = None,
         batch_size: int | None = None,
     ) -> None:
-        self._poll_interval = poll_interval_seconds or getattr(settings, "WORKER_POLL_INTERVAL_SECONDS", 60)
-        self._batch_size = batch_size or getattr(settings, "WORKER_BATCH_SIZE", 10)
+        poll_val = getattr(settings, "WORKER_POLL_INTERVAL_SECONDS", 60)
+        self._poll_interval: int = int(
+            poll_interval_seconds if poll_interval_seconds is not None else poll_val
+        )
+        batch_val = getattr(settings, "WORKER_BATCH_SIZE", 10)
+        self._batch_size: int = int(batch_size if batch_size is not None else batch_val)
         self._shutdown = False
 
         # Dependências via container (bootstrap) — respeita arquitetura hexagonal
-        self._dispatcher = container.get_outbox_dispatcher()
-        self._cadence_processor = container.get_process_cadence_step_command()
+        self._dispatcher: Any = container.get_outbox_dispatcher()
+        self._cadence_processor: ProcessCadenceStepCommand = (
+            container.get_process_cadence_step_command()
+        )
 
         # Signal handlers para shutdown gracioso
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -52,7 +61,7 @@ class Worker:
             logger.info("iniciando_ciclo_dispatch_outbox", correlation_id=cid)
             processed = self._dispatcher.dispatch_batch(batch_size=self._batch_size)
             logger.info("ciclo_dispatch_concluido", processed=processed, correlation_id=cid)
-            return processed
+            return int(processed)
         except Exception as exc:
             logger.exception("erro_no_ciclo_dispatch", error=str(exc), correlation_id=cid)
             return 0
@@ -66,7 +75,7 @@ class Worker:
             logger.info("iniciando_ciclo_processamento_cadencia", correlation_id=cid)
             processed = self._cadence_processor.execute(batch_size=self._batch_size)
             logger.info("ciclo_cadencia_concluido", processed=processed, correlation_id=cid)
-            return processed
+            return int(processed)
         except Exception as exc:
             logger.exception("erro_no_ciclo_cadencia", error=str(exc), correlation_id=cid)
             return 0
@@ -104,7 +113,9 @@ class Worker:
                     break
                 time.sleep(1)
 
-        logger.info("worker_finalizado", shutdown_requested=self._shutdown, kill_switch=settings.KILL_SWITCH)
+        logger.info(
+            "worker_finalizado", shutdown_requested=self._shutdown, kill_switch=settings.KILL_SWITCH
+        )
         sys.exit(0)
 
 
