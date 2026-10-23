@@ -1,25 +1,22 @@
 # STATE.md — vendas-de-sistemas
-Atualizado em: 20/10/2026
-Branch e commit: master (Bloco A 100% Concluído)
-Fase atual: Transição do Bloco A para Bloco B / Fase F2
+Atualizado em: 23/10/2026
+Branch e commit: master (Gate do Bloco B Aprovado)
+Fase atual: Transição para o Bloco C (Itens 13 a 15)
 
 Validações comprovadas (Quality Gates Verdes):
-- pytest tests/unit -q: 170 passed
-- pytest tests/integration -q: 5 passed (PostgreSQL ativo)
-- python -m mypy src/vendas --strict: Success (89 source files)
+- pytest tests/unit -q: 172 passed (100% em memória, zero I/O)
+- pytest tests/integration -q: 7 passed (PostgreSQL ativo via vendas_db_test)
+- python -m mypy src/vendas --strict: Success (0 erros em 97 source files)
 - ruff check src tests: All checks passed!
-- ruff format --check src tests: 111 files already formatted
+- ruff format --check src tests: 124 files already formatted
 - lint-imports: Contracts: 4 kept, 0 broken
 
-Decisões e Entregas Consolidadas (Bloco A - Itens 1 a 8):
-- A1: Port Clock(Protocol) UTC, injeção no UoW/repositórios, claim_pending com SKIP LOCKED temporal, baseline Alembic reversível e fix de enums no Postgres.
-- A2: Schemas de payload Pydantic por event_type e validação defensiva na criação e no dispatcher.
-- A3: Kill Switch global no settings, parada imediata no dispatcher e middleware de proteção na API.
-- A4: Opt-out mandatório, gravação na suppression_list e bloqueio estrito em cadências.
-- A5: Retry policy de base 2 com jitter de 10% e persistência de scheduled_at futuro para falhas transientes.
-- A6: DRY_RUN controlado exclusivamente pelo OutboxDispatcher com mascaramento recursivo de PII para LGPD.
-- A7: Propagação de correlation_id em headers HTTP e por ciclo de mensagem no worker via structlog.
-- A8: Autenticação da API por tokens estáticos (dev/prod) com controle de papéis (admin/operator) e hmac.compare_digest.
+Decisões e Entregas Consolidadas (Blocos A e B):
+- Bloco A: Clock(Protocol) UTC, Schemas Pydantic na outbox, Kill Switch global, Opt-out mandatório, Backoff exponencial base 2, DRY_RUN no dispatcher com mascaramento recursivo de PII, Correlation ID e Autenticação por API Key.
+- Bloco B: Isolamento formal do banco de testes em tests/integration/conftest.py, purga de utcnow no domínio, KnowledgeBase como fonte única com PostAiValidator, ConversationLock via advisory locks do Postgres, Dashboard via read-models e Worker assíncrono isolado de infraestrutura.
 
 Próximo passo:
-- Iniciar o Bloco B (Ingestão, Provedores Externos e Deduplicação - Fase F2).
+- Iniciar o Bloco C (conforme plano canônico reconciliado):
+  * Item 13 (Tarefa C1): Testes de Integração em PostgreSQL Real (cobertura profunda de repositórios, UoW e transações).
+  * Item 14 (Tarefa C2): Suíte de Avaliação de IA e Prompts Versionados (dataset de conversas adversariais e guardrails).
+  * Item 15 (Tarefa C3): Runbooks de Operação e Contingência em docs/runbooks/.
