@@ -453,6 +453,7 @@ class Conversation(Base):
     )
     channel: Mapped[str] = mapped_column(String(50), default="whatsapp", nullable=False)
     contact_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     state: Mapped[ConversationState] = mapped_column(
         Enum(ConversationState, native_enum=False),
         default=ConversationState.OPEN,
@@ -645,8 +646,8 @@ class Outbox(Base):
     provider_message_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     provider_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    max_retries: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )

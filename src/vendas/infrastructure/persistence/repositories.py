@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from vendas.domain.entities.booking import Booking
 from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, EnrollmentStatus
-from vendas.domain.entities.conversation import Conversation, Message
+from vendas.domain.entities.conversation import Conversation, ConversationState, Message
 from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.outbox_message import OutboxMessage
@@ -37,6 +37,9 @@ from vendas.infrastructure.persistence.orm_models import (
     OutboxModel,
     OutboxStatus,
     SuppressionListModel,
+)
+from vendas.infrastructure.persistence.orm_models import (
+    ConversationState as ORMConversationState,
 )
 
 
@@ -179,6 +182,7 @@ class SQLAlchemyConversationRepository:
             lead_id=entity.lead_id,
             channel=entity.channel,
             contact_phone=entity.contact_phone,
+            contact_email=entity.contact_email,
             state=entity.state.value if hasattr(entity.state, "value") else entity.state,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -194,10 +198,8 @@ class SQLAlchemyConversationRepository:
         """Salva/atualiza conversa existente."""
         model = self._session.query(ConversationModel).filter_by(id=entity.id).first()
         if model:
-            state_value = (
-                entity.state.value if hasattr(entity.state, "value") else str(entity.state)
-            )
-            model.state = state_value  # type: ignore[assignment]
+            state_value = ORMConversationState(entity.state.value)
+            model.state = state_value
             model.updated_at = self._clock.now()
 
     def remove(self, entity: Conversation) -> None:
@@ -304,7 +306,6 @@ class SQLAlchemyConversationRepository:
         """Converte ORM para Domain."""
         if not model:
             return None
-        from vendas.domain.entities.conversation import ConversationState
 
         return Conversation(
             id=model.id,
@@ -456,19 +457,19 @@ class SQLAlchemyOutboxRepository:
         if not model:
             return
         if will_retry:
-            next_retry_count = model.retry_count + 1
+            next_attempt = model.attempts + 1
             now = self._clock.now()
             scheduled_at = compute_next_retry_at(
                 now=now,
-                retry_count=next_retry_count,
+                retry_count=next_attempt,
                 jitter=True,
             )
-            model.retry_count = next_retry_count
+            model.attempts = next_attempt
             model.error_message = error
             model.status = OutboxStatus.PENDING
             model.scheduled_at = scheduled_at
         else:
-            model.retry_count = model.retry_count + 1
+            model.attempts = model.attempts + 1
             model.error_message = error
             model.status = OutboxStatus.FAILED
 
@@ -476,7 +477,7 @@ class SQLAlchemyOutboxRepository:
         """Busca mensagens em dead letter."""
         models = (
             self._session.query(OutboxModel)
-            .filter(OutboxModel.retry_count >= OutboxModel.max_retries)
+            .filter(OutboxModel.attempts >= OutboxModel.max_attempts)
             .limit(limit)
             .all()
         )
@@ -645,8 +646,9 @@ class SQLAlchemySuppressionRepository:
         model = self._session.query(SuppressionListModel).filter_by(phone_e164=phone_e164).first()
         return SuppressionRecordMapper.to_domain(model) if model else None
 
-    def is_suppressed(self, phone_e164: str) -> bool:
+    def is_suppressed(self, phone: Phone, email: str | None = None) -> bool:
         now = self._clock.now()
+        phone_e164 = str(phone)
         model = (
             self._session.query(SuppressionListModel)
             .filter_by(phone_e164=phone_e164)

@@ -283,8 +283,8 @@ class OutboxMapper:
             destination=model.to_phone,
             template_name=model.template_name,
             template_params=model.template_params,
-            attempts=model.retry_count,
-            max_attempts=model.max_retries,
+            attempts=model.attempts,
+            max_attempts=model.max_attempts,
             status=OutboxStatus(
                 model.status.value if hasattr(model.status, "value") else model.status
             ),
@@ -311,8 +311,8 @@ class OutboxMapper:
             template_name=entity.template_name,
             template_params=entity.template_params,
             status=entity.status,
-            retry_count=entity.attempts,
-            max_retries=entity.max_attempts,
+            attempts=entity.attempts,
+            max_attempts=entity.max_attempts,
             error_message=entity.last_error,
             scheduled_at=entity.scheduled_at,
             sent_at=entity.processed_at,
