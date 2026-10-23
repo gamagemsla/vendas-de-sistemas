@@ -23,13 +23,12 @@ async def correlation_id_middleware(
     response: Response | None = None
     try:
         response = await call_next(request)
+        return response
     finally:
         # Guarda defensiva: response pode ser None se exceção ocorrer antes da criação
         if response is not None:
             response.headers["X-Correlation-ID"] = cid
         clear_correlation_id()
-    assert response is not None
-    return response
 
 
 def create_app(auth_port: AuthPort | None = None) -> FastAPI:

@@ -1,9 +1,7 @@
 import os
 
 # Força o uso do banco de testes antes de qualquer import do projeto
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql://postgres:password@localhost:5432/vendas_db_test"
-)
+os.environ["DATABASE_URL"] = "postgresql://postgres:password@localhost:5432/vendas_db_test"
 
 import psycopg
 import pytest
@@ -35,14 +33,11 @@ def create_tables():
     from vendas.infrastructure.persistence.base import Base
 
     engine = create_engine(settings.DATABASE_URL)
+    # Trava de segurança: só operar em banco cujo nome termina com "_test"
+    assert engine.url.database and engine.url.database.endswith("_test"), (
+        f"ABORTADO: Tentativa de operacao no banco '{engine.url.database}'. "
+        "O banco DEVE terminar em '_test'!"
+    )
     Base.metadata.create_all(bind=engine)
     yield
     # Não dropar tabelas ao final para evitar conflitos com fixtures de testes
-
-
-@pytest.fixture(scope="session", autouse=True)
-def override_database_url():
-    """Garante que DATABASE_URL aponte para o banco de testes."""
-    os.environ["DATABASE_URL"] = settings.DATABASE_URL_TEST
-    yield
-    # Cleanup não é estritamente necessário pois é session-scoped

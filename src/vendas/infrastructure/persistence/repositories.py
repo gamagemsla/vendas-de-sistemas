@@ -35,6 +35,7 @@ from vendas.infrastructure.persistence.orm_models import (
     LeadModel,
     MessageModel,
     OutboxModel,
+    OutboxStatus,
     SuppressionListModel,
 )
 
@@ -363,6 +364,7 @@ class SQLAlchemyOutboxRepository:
                 template_params=kwargs.get("template_params"),
                 max_attempts=kwargs.get("max_attempts", 3),
                 scheduled_at=kwargs.get("scheduled_at"),
+                at=self._clock.now(),
             )
             model = OutboxMapper.to_orm(entity)
 
@@ -409,6 +411,23 @@ class SQLAlchemyOutboxRepository:
         )
         return [dm for m in models if (dm := OutboxMapper.to_domain(m)) is not None]
 
+    def claim_pending(self, batch_size: int = 10) -> list[OutboxMessage]:
+        """Busca mensagens pendentes para processamento com SKIP LOCKED,
+        considerando scheduled_at (None ou <= now). Retorna entidades de domínio.
+        """
+        from sqlalchemy import or_
+
+        now = self._clock.now()
+        models = (
+            self._session.query(OutboxModel)
+            .filter(OutboxModel.status == "pending")
+            .filter(or_(OutboxModel.scheduled_at.is_(None), OutboxModel.scheduled_at <= now))
+            .with_for_update(skip_locked=True)
+            .limit(batch_size)
+            .all()
+        )
+        return [dm for m in models if (dm := OutboxMapper.to_domain(m)) is not None]
+
     def mark_processing(self, message_id: UUID | str) -> bool:
         """Marca como processando."""
         result = (
@@ -420,13 +439,11 @@ class SQLAlchemyOutboxRepository:
 
     def mark_sent(self, message_id: UUID | str, external_id: str | None = None) -> None:
         """Marca como enviada."""
-        self._session.query(OutboxModel).filter_by(id=message_id).update(
-            {
-                "status": "sent",
-                "provider_message_id": external_id,
-                "sent_at": self._clock.now(),
-            }
-        )
+        model = self._session.query(OutboxModel).filter_by(id=message_id).first()
+        if model:
+            model.status = OutboxStatus.SENT
+            model.provider_message_id = external_id
+            model.sent_at = self._clock.now()
 
     def mark_failed(
         self,
@@ -435,37 +452,25 @@ class SQLAlchemyOutboxRepository:
         will_retry: bool,
     ) -> None:
         """Marca como falhada."""
+        model = self._session.query(OutboxModel).filter_by(id=message_id).first()
+        if not model:
+            return
         if will_retry:
-            # Need to compute scheduled_at based on new retry_count.
-            # Fetch current retry_count to know the next one.
-            model = self._session.query(OutboxModel).filter_by(id=message_id).first()
-            if model:
-                next_retry_count = model.retry_count + 1
-                now = self._clock.now()
-                scheduled_at = compute_next_retry_at(
-                    now=now,
-                    retry_count=next_retry_count,
-                    jitter=True,
-                )
-                self._session.query(OutboxModel).filter_by(id=message_id).update(
-                    {
-                        "retry_count": next_retry_count,
-                        "error_message": error,
-                        "status": "pending",
-                        "scheduled_at": scheduled_at,
-                    }
-                )
-            else:
-                # Not found, nothing to do
-                return
-        else:
-            self._session.query(OutboxModel).filter_by(id=message_id).update(
-                {
-                    "retry_count": OutboxModel.retry_count + 1,
-                    "error_message": error,
-                    "status": "failed",
-                }
+            next_retry_count = model.retry_count + 1
+            now = self._clock.now()
+            scheduled_at = compute_next_retry_at(
+                now=now,
+                retry_count=next_retry_count,
+                jitter=True,
             )
+            model.retry_count = next_retry_count
+            model.error_message = error
+            model.status = OutboxStatus.PENDING
+            model.scheduled_at = scheduled_at
+        else:
+            model.retry_count = model.retry_count + 1
+            model.error_message = error
+            model.status = OutboxStatus.FAILED
 
     def get_dead_letters(self, limit: int = 100) -> list[OutboxMessage]:
         """Busca mensagens em dead letter."""

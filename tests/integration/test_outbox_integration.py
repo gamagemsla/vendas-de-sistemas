@@ -10,10 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from vendas.bootstrap.settings import settings
 from vendas.infrastructure.persistence.base import Base
 from vendas.infrastructure.persistence.orm_models import OutboxModel, OutboxStatus
-from vendas.infrastructure.persistence.repositories import (
-    SQLAlchemyOutboxRepository as PersistenceOutboxRepository,
-)
-from vendas.infrastructure.queue.outbox import SQLAlchemyOutboxRepository as QueueOutboxRepository
+from vendas.infrastructure.persistence.repositories import SQLAlchemyOutboxRepository
 
 
 def _make_session() -> Session:
@@ -30,23 +27,25 @@ def _make_session() -> Session:
     return SessionLocal()
 
 
-def test_outbox_contract_between_repositories() -> None:
+def test_outbox_canonical_repository() -> None:
     session = _make_session()
-    queue_repo = QueueOutboxRepository(session)
-    persistence_repo = PersistenceOutboxRepository(session)
+    repo = SQLAlchemyOutboxRepository(session)
     try:
-        # a) add via queue repo using a known event_type with valid payload
+        # a) add via repo using a known event_type with valid payload
         event_type = "SEND_AI_RESPONSE"
         payload = {"phone": "+5511999999999", "content": "Test message"}
         idempotency_key = f"idemp-{uuid4()}"
 
-        queue_repo.add(event_type=event_type, payload=payload, idempotency_key=idempotency_key)
+        repo.add_message(
+            event_type=event_type,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
         session.flush()
 
-        # read via persistence repo get
-        # need to fetch the inserted model id
+        # read via repo get
         model = session.query(OutboxModel).filter_by(idempotency_key=idempotency_key).one()
-        persisted = persistence_repo.get(str(model.id))
+        persisted = repo.get(str(model.id))
         assert persisted is not None
         assert persisted.event_type == event_type
         assert persisted.payload == payload
@@ -55,46 +54,43 @@ def test_outbox_contract_between_repositories() -> None:
         assert persisted.status.value == "pending"
 
         # get_pending should also return it
-        pending_list = persistence_repo.get_pending(limit=10)
+        pending_list = repo.get_pending(limit=10)
         assert any(m.idempotency_key == idempotency_key for m in pending_list)
 
-        # b) claim_pending via queue repo
-        claimed = queue_repo.claim_pending(batch_size=10)
+        # b) claim_pending via repo
+        claimed = repo.claim_pending(batch_size=10)
         assert len(claimed) == 1
         claimed_item = claimed[0]
         assert claimed_item.idempotency_key == idempotency_key
 
-        # mark_as_sent via queue repo
-        queue_repo.mark_as_sent(str(claimed_item.id))
+        # mark_sent via repo
+        repo.mark_sent(str(claimed_item.id))
         session.flush()
-        # read via persistence repo
-        sent_msg = persistence_repo.get(str(claimed_item.id))
+        # read via repo
+        sent_msg = repo.get(str(claimed_item.id))
         assert sent_msg is not None
         # persistence expects status "sent" lowercase
         assert sent_msg.status.value == "sent"
 
-        # mark_as_failed via queue repo (will retry false -> dead_letter)
-        # insert another message for failure test
+        # mark_failed via repo (will_retry=False -> failed)
         idempotency_key2 = f"idemp-{uuid4()}"
-        queue_repo.add(
+        repo.add_message(
             event_type="SEND_AI_RESPONSE",
             payload={"phone": "+5511888888888", "content": "Fail test"},
             idempotency_key=idempotency_key2,
         )
         session.flush()
         model2 = session.query(OutboxModel).filter_by(idempotency_key=idempotency_key2).one()
-        queue_repo.mark_as_failed(str(model2.id), error_message="boom")
+        repo.mark_failed(str(model2.id), error="boom", will_retry=False)
         session.flush()
-        failed_msg = persistence_repo.get(str(model2.id))
+        failed_msg = repo.get(str(model2.id))
         assert failed_msg is not None
-        # queue repo sets status to DEAD_LETTER (enum) when retries exhausted, else PENDING.
-        # Since retry_count starts at 0, after mark_as_failed it becomes 1 (<5) so status = PENDING (enum)
-        # persistence expects "pending" lowercase
-        assert failed_msg.status.value == "pending"
+        # should be failed (lowercase)
+        assert failed_msg.status.value == "failed"
 
         # c) duplicate idempotency_key should raise IntegrityError
         try:
-            queue_repo.add(
+            repo.add_message(
                 event_type="SEND_AI_RESPONSE",
                 payload={"phone": "+5511777777777", "content": "Dup test"},
                 idempotency_key=idempotency_key,
@@ -112,7 +108,7 @@ def test_outbox_contract_between_repositories() -> None:
 
 def test_claim_pending_respects_scheduled_at() -> None:
     session = _make_session()
-    queue_repo = QueueOutboxRepository(session)
+    repo = SQLAlchemyOutboxRepository(session)
     try:
         now = datetime.now(UTC)
 
@@ -148,7 +144,7 @@ def test_claim_pending_respects_scheduled_at() -> None:
 
         session.flush()
 
-        claimed = queue_repo.claim_pending(batch_size=10)
+        claimed = repo.claim_pending(batch_size=10)
         claimed_ids = {m.id for m in claimed}
 
         assert future_msg.id not in claimed_ids, "Future scheduled message should not be claimed"

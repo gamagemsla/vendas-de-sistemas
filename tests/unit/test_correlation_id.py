@@ -1,10 +1,13 @@
+import asyncio
 import uuid
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from vendas.bootstrap.logging import clear_correlation_id, get_correlation_id, set_correlation_id
-from vendas.interfaces.api.app import app
+from vendas.interfaces.api.app import app, correlation_id_middleware
 
 
 def test_set_and_get_correlation_id():
@@ -103,3 +106,20 @@ def test_dispatcher_binds_correlation_id_per_item(monkeypatch):
     mock_uow.outbox.claim_pending.assert_called_once_with(batch_size=10)
     # Ensure mark_as_sent called for each (DRY_RUN default true in settings)
     assert mock_uow.outbox.mark_as_sent.call_count == 2
+
+
+def test_middleware_cleans_correlation_id_on_unhandled_exception():
+    clear_correlation_id()
+    # create a mock request
+    scope = {"type": "http", "headers": []}
+    request = Request(scope)
+
+    async def call_next(_req):
+        raise RuntimeError("boom")
+
+    async def run():
+        with pytest.raises(RuntimeError):
+            await correlation_id_middleware(request, call_next)
+        assert get_correlation_id() is None
+
+    asyncio.run(run())
