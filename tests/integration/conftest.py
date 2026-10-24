@@ -26,11 +26,11 @@ def create_test_database():
 
 @pytest.fixture(scope="session", autouse=True)
 def create_tables():
-    """Cria todas as tabelas no banco de testes."""
-    from sqlalchemy import create_engine
+    """Aplica as migrations do Alembic no banco de testes, garantindo estado limpo."""
+    from alembic.config import Config
+    from sqlalchemy import create_engine, text
 
-    import vendas.infrastructure.persistence.orm_models  # noqa: F401
-    from vendas.infrastructure.persistence.base import Base
+    from alembic import command
 
     engine = create_engine(settings.DATABASE_URL)
     # Trava de segurança: só operar em banco cujo nome termina com "_test"
@@ -38,6 +38,11 @@ def create_tables():
         f"ABORTADO: Tentativa de operacao no banco '{engine.url.database}'. "
         "O banco DEVE terminar em '_test'!"
     )
-    Base.metadata.create_all(bind=engine)
+    # Limpa o schema public antes de aplicar as migrations
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+    alembic_cfg = Config("alembic.ini")
+    # Aplica todas as migrations até head
+    command.upgrade(alembic_cfg, "head")
     yield
     # Não dropar tabelas ao final para evitar conflitos com fixtures de testes
