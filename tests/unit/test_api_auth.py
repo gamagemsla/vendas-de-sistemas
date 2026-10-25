@@ -10,19 +10,19 @@ from vendas.interfaces.api.app import app
 from vendas.interfaces.api.deps import require_role
 
 # Rota leve exclusiva para validar o middleware e as roles sem tocar em banco
-test_router = APIRouter(prefix="/test-auth")
+_auth_test_router = APIRouter(prefix="/test-auth")
 
 # Dependências extraídas para variáveis de módulo (Ruff B008)
 admin_role_dep = Depends(require_role(Role.ADMIN))
 operator_role_dep = Depends(require_role(Role.ADMIN, Role.OPERATOR))
 
 
-@test_router.get("/admin-only")
+@_auth_test_router.get("/admin-only")
 def _admin_endpoint(user: AuthContext = admin_role_dep) -> dict[str, str]:
     return {"status": "ok", "user": user.user_id}
 
 
-app.include_router(test_router)
+app.include_router(_auth_test_router)
 client = TestClient(app)
 
 
