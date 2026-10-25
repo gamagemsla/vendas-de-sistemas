@@ -6,16 +6,18 @@ from typing import Any, cast
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
 from vendas.bootstrap.settings import settings
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
-from vendas.domain.ports import Clock
+from vendas.domain.ports import Clock, JobQueue
+from vendas.domain.ports import UnitOfWork as UowProtocol
 from vendas.domain.ports.auth import AuthPort
 from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports.conversation_lock import ConversationLock
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
-from vendas.domain.ports.uow import UnitOfWork as UowProtocol
+from vendas.domain.ports.uow import UnitOfWork as UowProtocolForDispatcher
 from vendas.infrastructure.auth import SettingsAuthAdapter
 from vendas.infrastructure.channels.evolution_whatsapp import EvolutionWhatsAppChannel
 from vendas.infrastructure.clock import SystemClock
@@ -34,7 +36,9 @@ from vendas.infrastructure.persistence.orm_models import (
 )
 from vendas.infrastructure.persistence.pg_conversation_lock import PgAdvisoryConversationLock
 from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
+from vendas.infrastructure.providers.apify import ApifyLeadSource
 from vendas.infrastructure.queue.dispatcher import OutboxDispatcher
+from vendas.infrastructure.queue.job_queue import InMemoryJobQueue
 
 
 class Container:
@@ -56,6 +60,7 @@ class Container:
 
         self.clock: Clock = SystemClock()
         self.auth_port: AuthPort = SettingsAuthAdapter()
+        self.job_queue: JobQueue = InMemoryJobQueue()
 
         self.uow = SQLAlchemyUnitOfWork(self.session_factory, self.clock)
         self.catalog_repository_factory: Callable[[Session], CatalogRepository] = lambda session: (
@@ -77,7 +82,7 @@ class Container:
             api_key=settings.EVOLUTION_API_KEY,
             instance_name="default",
         )
-        return OutboxDispatcher(cast(UowProtocol, self.uow), channel)
+        return OutboxDispatcher(cast(UowProtocolForDispatcher, self.uow), channel)
 
     def get_process_cadence_step_command(self) -> ProcessCadenceStepCommand:
         send_window_policy = SendWindowPolicy(self.clock)
@@ -87,6 +92,18 @@ class Container:
             uow=cast(ProcessUowProtocol, self.uow),
             clock=self.clock,
             send_window_policy=send_window_policy,
+        )
+
+    def get_ingest_leads_command(self) -> IngestLeadsCommand:
+        lead_source = ApifyLeadSource(
+            api_key=settings.APIFY_API_KEY,
+            actor_id=settings.APIFY_ACTOR_ID,
+        )
+        return IngestLeadsCommand(
+            uow=cast(UowProtocol, self.uow),
+            lead_source=lead_source,
+            clock=self.clock,
+            job_queue=self.job_queue,
         )
 
     # --- query helpers -------------------------------------------------------

@@ -1,8 +1,8 @@
-from types import TracebackType
 from typing import Self
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from vendas.domain.events import DomainEvent
 from vendas.domain.ports import Clock
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 from vendas.infrastructure.persistence.repositories import (
@@ -46,7 +46,7 @@ class SQLAlchemyUnitOfWork:
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
+        exc_tb: object,
     ) -> None:
         if exc_type:
             self.rollback()
@@ -60,3 +60,11 @@ class SQLAlchemyUnitOfWork:
     def rollback(self) -> None:
         if self.session:
             self.session.rollback()
+
+    def collect_events(self) -> list[DomainEvent]:
+        events: list[DomainEvent] = []
+        if self.leads:
+            # Assuming leads repository has a way to get modified entities
+            # For now, return empty list
+            pass
+        return events

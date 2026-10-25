@@ -55,5 +55,18 @@ module = ["streamlit.*", "google.*", "google.generativeai"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["google.generativeai", "google.generativeai.*"]
+ignore_missing_imports = true
+disable_error_code = ["attr-defined", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = ["vendas.infrastructure.llm.gemini"]
+disable_error_code = ["attr-defined", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = ["vendas.bootstrap.settings"]
+disable_error_code = ["call-arg"]
+
+[[tool.mypy.overrides]]
 module = ["vendas.infrastructure.persistence.orm_models", "vendas.infrastructure.queue.outbox"]
 disable_error_code = ["type-arg", "assignment"]

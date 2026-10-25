@@ -198,9 +198,10 @@ class Lead:
         phone: str | Phone,
         cnpj: str | Cnpj | None = None,
         email: str | Email | None = None,
+        at: datetime | None = None,
     ) -> Lead:
         """Alias for create() for backward compatibility."""
-        return cls.create(name=name, phone=phone, cnpj=cnpj, email=email)
+        return cls.create(name=name, phone=phone, cnpj=cnpj, email=email, at=at)
 
     def enrich_data(self, enrichment_data: dict[str, Any]) -> None:
         """Alias for enrich() using a dict for backward compatibility."""

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Chaves e Endpoints Externos
     APIFY_API_KEY: str = ""
+    APIFY_ACTOR_ID: str = ""
     FIRECRAWL_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     EVOLUTION_API_URL: str = "http://localhost:8080"
@@ -40,7 +41,7 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     """Retorna uma instância de Settings validada."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
 
 
 settings = get_settings()
