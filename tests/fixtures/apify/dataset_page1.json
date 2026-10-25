@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Empresa Alpha",
+    "cnpj": "12.345.678/0001-95",
+    "phone": "+55 11 99999-1111",
+    "email": "alpha@example.com"
+  },
+  {
+    "name": "Empresa Beta",
+    "cnpj": "98.765.432/0001-10",
+    "phone": "+55 11 99999-2222",
+    "email": "beta@example.com"
+  }
+]

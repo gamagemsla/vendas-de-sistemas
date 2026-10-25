@@ -98,3 +98,23 @@ class InMemoryConversationLock(ConversationLock):
         with self._global_lock:
             lock = self._locks.setdefault(lead_id, threading.Lock())
         return _InMemoryLockContext(lock)
+
+
+from collections.abc import Iterable
+from typing import Any
+
+from vendas.domain.ports.lead_source import LeadSource
+
+
+class FakeLeadSource(LeadSource):
+    """Fake LeadSource para testes unitários, retorna leads pré-definidos."""
+
+    def __init__(self, leads: list[dict[str, Any]] | None = None) -> None:
+        self._leads = leads or []
+
+    def search(self, query: dict[str, Any]) -> Iterable[dict[str, Any]]:
+        # Ignora query, retorna leads fixos
+        return self._leads
+
+    def set_leads(self, leads: list[dict[str, Any]]) -> None:
+        self._leads = leads
