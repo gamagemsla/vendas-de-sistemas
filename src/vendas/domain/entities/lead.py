@@ -203,7 +203,7 @@ class Lead:
         """Alias for create() for backward compatibility."""
         return cls.create(name=name, phone=phone, cnpj=cnpj, email=email, at=at)
 
-    def enrich_data(self, enrichment_data: dict[str, Any]) -> None:
+    def enrich_data(self, enrichment_data: dict[str, Any], at: datetime | None = None) -> None:
         """Alias for enrich() using a dict for backward compatibility."""
         self.enrich(
             cnpj=enrichment_data.get("cnpj"),
@@ -211,6 +211,7 @@ class Lead:
             company_name=enrichment_data.get("company_name"),
             company_size=enrichment_data.get("company_size"),
             industry=enrichment_data.get("industry"),
+            at=at,
         )
 
     def mark_as_eligible(self, at: datetime | None = None) -> None:

@@ -1,5 +1,12 @@
+from __future__ import annotations
+
+import structlog
+
+from vendas.domain.errors import ProviderError
 from vendas.domain.policies.eligibility_policy import EligibilityPolicy
-from vendas.domain.ports import LeadEnricher, UnitOfWork
+from vendas.domain.ports import Clock, LeadEnricher, UnitOfWork
+
+logger = structlog.get_logger(__name__)
 
 
 class EnrichLeadCommand:
@@ -10,12 +17,15 @@ class EnrichLeadCommand:
         uow: UnitOfWork,
         enricher: LeadEnricher,
         eligibility_policy: EligibilityPolicy,
+        clock: Clock,
     ) -> None:
         self._uow = uow
         self._enricher = enricher
         self._eligibility_policy = eligibility_policy
+        self._clock = clock
 
     def execute(self, lead_id: str) -> None:
+        now = self._clock.now()
         with self._uow as uow:
             lead = uow.leads.get(lead_id)
             if not lead:
@@ -24,10 +34,21 @@ class EnrichLeadCommand:
             # Se o lead tiver um site cadastrado, tenta enriquecer
             website = getattr(lead, "website", None)
             if website:
-                enrichment_data = self._enricher.enrich(website)
+                try:
+                    enrichment_data = self._enricher.enrich(website)
+                except ProviderError as exc:
+                    # Falha parcial: loga e continua sem enriquecer
+                    logger.warning(
+                        "enriquecimento_falhou_parcialmente",
+                        lead_id=lead_id,
+                        enricher=self._enricher.enricher_name,
+                        error=str(exc),
+                    )
+                    enrichment_data = None
+
                 # Atualiza metadados do lead com o resultado do enriquecimento
                 if enrichment_data:
-                    lead.enrich_data(enrichment_data)
+                    lead.enrich_data(enrichment_data, at=now)
 
             # Valida políticas de elegibilidade (supressão, consentimento/base legal, etc.)
             if lead.phone is not None:
@@ -38,9 +59,11 @@ class EnrichLeadCommand:
                     status=lead.status.value if lead.status else None,
                 )
                 if is_eligible:
-                    lead.mark_as_eligible()
+                    lead.mark_as_eligible(at=now)
                 else:
-                    lead.disqualify(reason="Falha na política de elegibilidade ou supressão")
+                    lead.disqualify(
+                        reason="Falha na política de elegibilidade ou supressão", at=now
+                    )
 
             uow.leads.save(lead)
             uow.commit()

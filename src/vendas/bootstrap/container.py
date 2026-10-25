@@ -6,10 +6,12 @@ from typing import Any, cast
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from vendas.application.commands.enrich_lead import EnrichLeadCommand
 from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
 from vendas.bootstrap.settings import settings
+from vendas.domain.policies.eligibility_policy import EligibilityPolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
 from vendas.domain.ports import Clock, JobQueue
 from vendas.domain.ports import UnitOfWork as UowProtocol
@@ -28,6 +30,7 @@ from vendas.infrastructure.persistence.conversation_query_factory import (
 )
 from vendas.infrastructure.persistence.dashboard_queries import SqlAlchemyDashboardQuery
 from vendas.infrastructure.persistence.dashboard_query_factory import SessionFactoryDashboardQuery
+from vendas.infrastructure.persistence.legal_basis import SQLAlchemyLegalBasisPort
 from vendas.infrastructure.persistence.orm_models import (
     CatalogItemModel,
     ConversationModel,
@@ -35,8 +38,10 @@ from vendas.infrastructure.persistence.orm_models import (
     LeadModel,
 )
 from vendas.infrastructure.persistence.pg_conversation_lock import PgAdvisoryConversationLock
+from vendas.infrastructure.persistence.suppression_port import SQLAlchemySuppressionPort
 from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from vendas.infrastructure.providers.apify import ApifyLeadSource
+from vendas.infrastructure.providers.firecrawl import FirecrawlLeadEnricher
 from vendas.infrastructure.queue.dispatcher import OutboxDispatcher
 from vendas.infrastructure.queue.job_queue import InMemoryJobQueue
 
@@ -69,6 +74,9 @@ class Container:
         self.knowledge_base_factory: Callable[[Session], KnowledgeBasePort] = lambda session: cast(
             KnowledgeBasePort, SqlAlchemyKnowledgeBase(session)
         )
+
+        # Providers
+        self.firecrawl_enricher = FirecrawlLeadEnricher(api_key=settings.FIRECRAWL_API_KEY)
 
     # --- factories / getters -------------------------------------------------
 
@@ -104,6 +112,20 @@ class Container:
             lead_source=lead_source,
             clock=self.clock,
             job_queue=self.job_queue,
+        )
+
+    def get_enrich_lead_command(self) -> EnrichLeadCommand:
+        suppression_port = SQLAlchemySuppressionPort()
+        legal_basis_port = SQLAlchemyLegalBasisPort()
+        eligibility_policy = EligibilityPolicy(
+            suppression_port=suppression_port,
+            legal_basis_port=legal_basis_port,
+        )
+        return EnrichLeadCommand(
+            uow=cast(UowProtocol, self.uow),
+            enricher=self.firecrawl_enricher,
+            eligibility_policy=eligibility_policy,
+            clock=self.clock,
         )
 
     # --- query helpers -------------------------------------------------------
