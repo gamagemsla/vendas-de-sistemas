@@ -507,7 +507,7 @@ class TestEligibilityPolicy:
             def __init__(self, has_basis=True):
                 self._has_basis = has_basis
 
-            def has_legal_basis(self, lead_id):
+            def has_legal_basis(self, lead_id, phone):
                 return self._has_basis
 
         self.suppression_port = MockSuppressionPort()
@@ -620,7 +620,7 @@ class TestPoliciesIntegration:
                 return False
 
         class MockLegalBasisPort:
-            def has_legal_basis(self, lead_id):
+            def has_legal_basis(self, lead_id, phone):
                 return True
 
         eligibility_policy = EligibilityPolicy(

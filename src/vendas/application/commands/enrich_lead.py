@@ -50,20 +50,23 @@ class EnrichLeadCommand:
                 if enrichment_data:
                     lead.enrich_data(enrichment_data, at=now)
 
-            # Valida políticas de elegibilidade (supressão, consentimento/base legal, etc.)
+            # Valida políticas de elegibilidade (supressão, consentimento/base legal, ICP, etc.)
             if lead.phone is not None:
-                is_eligible = self._eligibility_policy.is_eligible(
+                result = self._eligibility_policy.check(
                     lead_id=lead.id,
                     phone=lead.phone,
                     email=str(lead.email) if lead.email else None,
                     status=lead.status.value if lead.status else None,
+                    company_size=lead.company_size,
+                    industry=lead.industry,
+                    qualification_score=lead.qualification_score,
                 )
-                if is_eligible:
+                if result.is_eligible:
                     lead.mark_as_eligible(at=now)
                 else:
-                    lead.disqualify(
-                        reason="Falha na política de elegibilidade ou supressão", at=now
-                    )
+                    # Formata motivos estruturados para o campo reason
+                    reasons_str = ", ".join([r.value for r in result.reasons])
+                    lead.disqualify(reason=reasons_str, at=now)
 
             uow.leads.save(lead)
             uow.commit()

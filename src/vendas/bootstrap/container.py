@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.application.commands.enrich_lead import EnrichLeadCommand
+from vendas.application.commands.enroll_in_cadence import EnrollInCadenceCommand
 from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
@@ -126,6 +127,19 @@ class Container:
             enricher=self.firecrawl_enricher,
             eligibility_policy=eligibility_policy,
             clock=self.clock,
+        )
+
+    def get_enroll_in_cadence_command(self) -> EnrollInCadenceCommand:
+        suppression_port = SQLAlchemySuppressionPort()
+        legal_basis_port = SQLAlchemyLegalBasisPort()
+        eligibility_policy = EligibilityPolicy(
+            suppression_port=suppression_port,
+            legal_basis_port=legal_basis_port,
+        )
+        return EnrollInCadenceCommand(
+            uow=cast(UowProtocol, self.uow),
+            clock=self.clock,
+            eligibility_policy=eligibility_policy,
         )
 
     # --- query helpers -------------------------------------------------------

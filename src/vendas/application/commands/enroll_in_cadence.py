@@ -7,9 +7,15 @@ from vendas.domain.ports import UnitOfWork
 class EnrollInCadenceCommand:
     """Caso de uso responsável por inscrever um lead elegível em uma cadência comercial."""
 
-    def __init__(self, uow: UnitOfWork, clock: Any) -> None:
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        clock: Any,
+        eligibility_policy: EligibilityPolicy,
+    ) -> None:
         self._uow = uow
         self._clock = clock
+        self._eligibility_policy = eligibility_policy
 
     def execute(self, lead_id: str, cadence_name: str = "default_b2b") -> bool:
         with self._uow as uow:
@@ -17,9 +23,25 @@ class EnrollInCadenceCommand:
             if not lead:
                 return False
 
-            # Validações de segurança antes da inscrição
-            if not EligibilityPolicy.quick_check(lead):
-                lead.disqualify(reason="Tentativa de inscrição de lead inelegível")
+            # Validações de segurança antes da inscrição (política completa)
+            if lead.phone is not None:
+                result = self._eligibility_policy.check(
+                    lead_id=lead.id,
+                    phone=lead.phone,
+                    email=str(lead.email) if lead.email else None,
+                    status=lead.status.value if lead.status else None,
+                    company_size=lead.company_size,
+                    industry=lead.industry,
+                    qualification_score=lead.qualification_score,
+                )
+                if not result.is_eligible:
+                    reasons_str = ", ".join([r.value for r in result.reasons])
+                    lead.disqualify(reason=reasons_str)
+                    uow.leads.save(lead)
+                    uow.commit()
+                    return False
+            else:
+                lead.disqualify(reason="invalid_phone")
                 uow.leads.save(lead)
                 uow.commit()
                 return False

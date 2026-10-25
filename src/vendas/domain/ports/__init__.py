@@ -672,7 +672,7 @@ class SuppressionListPort(Protocol):
 class LegalBasisPort(Protocol):
     """Port para verificar se há base legal registrada para o lead."""
 
-    def has_legal_basis(self, lead_id: EntityId) -> bool:
+    def has_legal_basis(self, lead_id: EntityId, phone: Phone) -> bool:
         """Verifica se existe base legal (consentimento, legítimo interesse, etc.) registrada."""
         ...
 

@@ -21,7 +21,7 @@ class SuppressionListPort(Protocol):
 class LegalBasisPort(Protocol):
     """Port para verificar se há base legal registrada para o lead."""
 
-    def has_legal_basis(self, lead_id: UUID) -> bool:
+    def has_legal_basis(self, lead_id: UUID, phone: Phone) -> bool:
         """Verifica se existe base legal (consentimento, legítimo interesse, etc.) registrada."""
         ...
 
@@ -34,6 +34,7 @@ class EligibilityReason(str, Enum):
     SUPPRESSED = "suppressed"
     ALREADY_OPTED_OUT = "already_opted_out"
     INVALID_EMAIL = "invalid_email"
+    NOT_ICP_MATCH = "not_icp_match"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +55,7 @@ class EligibilityPolicy:
     2. Base legal registrada (consentimento, legítimo interesse)
     3. Não está na lista de supressão (opt-out global, DNC, etc.)
     4. E-mail válido (se fornecido)
+    5. Perfil de cliente ideal (ICP) - opcional, se critérios configurados
     """
 
     def __init__(
@@ -61,10 +63,16 @@ class EligibilityPolicy:
         suppression_port: SuppressionListPort,
         legal_basis_port: LegalBasisPort,
         require_email: bool = False,
+        allowed_company_sizes: list[str] | None = None,
+        allowed_industries: list[str] | None = None,
+        min_qualification_score: int | None = None,
     ):
         self._suppression_port = suppression_port
         self._legal_basis_port = legal_basis_port
         self._require_email = require_email
+        self._allowed_company_sizes = allowed_company_sizes
+        self._allowed_industries = allowed_industries
+        self._min_qualification_score = min_qualification_score
 
     def check(
         self,
@@ -72,6 +80,9 @@ class EligibilityPolicy:
         phone: Phone,
         email: str | None = None,
         status: str | None = None,
+        company_size: str | None = None,
+        industry: str | None = None,
+        qualification_score: int | None = None,
     ) -> EligibilityResult:
         """
         Verifica a elegibilidade do lead.
@@ -81,6 +92,9 @@ class EligibilityPolicy:
             phone: Telefone do lead (Value Object Phone)
             email: E-mail do lead (opcional)
             status: Status atual do lead (opcional)
+            company_size: Porte da empresa (opcional, para ICP)
+            industry: Setor da empresa (opcional, para ICP)
+            qualification_score: Score de qualificação (opcional, para ICP)
 
         Returns:
             EligibilityResult com o resultado da verificação
@@ -109,7 +123,7 @@ class EligibilityPolicy:
                     details["email"] = email
 
         # 3. Verifica base legal
-        if not self._legal_basis_port.has_legal_basis(lead_id):
+        if not self._legal_basis_port.has_legal_basis(lead_id, phone):
             reasons.append(EligibilityReason.NO_LEGAL_BASIS)
             details["legal_basis"] = "Base legal não encontrada"
         else:
@@ -129,6 +143,44 @@ class EligibilityPolicy:
         else:
             details["status"] = status or "UNKNOWN"
 
+        # 6. Verifica ICP (perfil de cliente ideal) se critérios configurados
+        icp_configured = (
+            self._allowed_company_sizes is not None
+            or self._allowed_industries is not None
+            or self._min_qualification_score is not None
+        )
+        if icp_configured:
+            icp_ok = True
+            icp_details = []
+            if self._allowed_company_sizes is not None and (
+                company_size is None or company_size not in self._allowed_company_sizes
+            ):
+                icp_ok = False
+                icp_details.append(
+                    f"company_size: {company_size} not in allowed {self._allowed_company_sizes}"
+                )
+            if self._allowed_industries is not None and (
+                industry is None or industry not in self._allowed_industries
+            ):
+                icp_ok = False
+                icp_details.append(
+                    f"industry: {industry} not in allowed {self._allowed_industries}"
+                )
+            if self._min_qualification_score is not None and (
+                qualification_score is None or qualification_score < self._min_qualification_score
+            ):
+                icp_ok = False
+                icp_details.append(
+                    f"qualification_score: {qualification_score} below min {self._min_qualification_score}"
+                )
+            if not icp_ok:
+                reasons.append(EligibilityReason.NOT_ICP_MATCH)
+                details["icp"] = "; ".join(icp_details)
+            else:
+                details["icp"] = "OK"
+        else:
+            details["icp"] = "NOT_CONFIGURED"
+
         is_eligible = len(reasons) == 0
 
         return EligibilityResult(
@@ -143,9 +195,20 @@ class EligibilityPolicy:
         phone: Phone,
         email: str | None = None,
         status: str | None = None,
+        company_size: str | None = None,
+        industry: str | None = None,
+        qualification_score: int | None = None,
     ) -> bool:
         """Verificação simples se o lead é elegível."""
-        return self.check(lead_id, phone, email, status).is_eligible
+        return self.check(
+            lead_id,
+            phone,
+            email,
+            status,
+            company_size=company_size,
+            industry=industry,
+            qualification_score=qualification_score,
+        ).is_eligible
 
     @staticmethod
     def quick_check(lead: object) -> bool:
