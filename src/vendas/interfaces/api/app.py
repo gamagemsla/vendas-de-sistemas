@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 import structlog
 from fastapi import FastAPI, Request, Response
 
+from vendas.bootstrap.container import container
 from vendas.bootstrap.logging import clear_correlation_id, set_correlation_id
 from vendas.bootstrap.settings import settings
 from vendas.domain.ports.auth import AuthPort
@@ -75,4 +76,4 @@ def create_app(auth_port: AuthPort | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+app = create_app(auth_port=container.auth_port)

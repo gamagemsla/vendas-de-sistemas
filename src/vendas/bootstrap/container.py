@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -8,12 +7,34 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
+from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
 from vendas.bootstrap.settings import settings
+from vendas.domain.policies.send_window_policy import SendWindowPolicy
 from vendas.domain.ports import Clock
 from vendas.domain.ports.auth import AuthPort
 from vendas.domain.ports.catalog import CatalogRepository
 from vendas.domain.ports.conversation_lock import ConversationLock
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
+from vendas.domain.ports.uow import UnitOfWork as UowProtocol
+from vendas.infrastructure.auth import SettingsAuthAdapter
+from vendas.infrastructure.channels.evolution_whatsapp import EvolutionWhatsAppChannel
+from vendas.infrastructure.clock import SystemClock
+from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
+from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
+from vendas.infrastructure.persistence.conversation_query_factory import (
+    SessionFactoryConversationQuery,
+)
+from vendas.infrastructure.persistence.dashboard_queries import SqlAlchemyDashboardQuery
+from vendas.infrastructure.persistence.dashboard_query_factory import SessionFactoryDashboardQuery
+from vendas.infrastructure.persistence.orm_models import (
+    CatalogItemModel,
+    ConversationModel,
+    ConversationState,
+    LeadModel,
+)
+from vendas.infrastructure.persistence.pg_conversation_lock import PgAdvisoryConversationLock
+from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
+from vendas.infrastructure.queue.dispatcher import OutboxDispatcher
 
 
 class Container:
@@ -28,113 +49,73 @@ class Container:
             expire_on_commit=False,
         )
 
-        orm_models = importlib.import_module("vendas.infrastructure.persistence.orm_models")
-        self.CatalogItemModel = orm_models.CatalogItemModel
-        self.ConversationModel = orm_models.ConversationModel
-        self.ConversationState = orm_models.ConversationState
-        self.LeadModel = orm_models.LeadModel
+        self.CatalogItemModel = CatalogItemModel
+        self.ConversationModel = ConversationModel
+        self.ConversationState = ConversationState
+        self.LeadModel = LeadModel
 
-        # Ports implementations - loaded dynamically via importlib
-        clock_module = importlib.import_module("vendas.infrastructure.clock")
-        self.clock: Clock = clock_module.SystemClock()
+        self.clock: Clock = SystemClock()
+        self.auth_port: AuthPort = SettingsAuthAdapter()
 
-        auth_module = importlib.import_module("vendas.infrastructure.auth")
-        self.auth_port: AuthPort = auth_module.SettingsAuthAdapter()
-
-        unit_of_work_module = importlib.import_module(
-            "vendas.infrastructure.persistence.unit_of_work"
-        )
-        self.uow = unit_of_work_module.SQLAlchemyUnitOfWork(self.session_factory, self.clock)
+        self.uow = SQLAlchemyUnitOfWork(self.session_factory, self.clock)
         self.catalog_repository_factory: Callable[[Session], CatalogRepository] = lambda session: (
-            cast(
-                CatalogRepository,
-                importlib.import_module(
-                    "vendas.infrastructure.persistence.catalog_repository"
-                ).SqlAlchemyCatalogRepository(session, self.clock),
-            )
+            cast(CatalogRepository, SqlAlchemyCatalogRepository(session, self.clock))
         )
         self.knowledge_base_factory: Callable[[Session], KnowledgeBasePort] = lambda session: cast(
-            KnowledgeBasePort,
-            importlib.import_module("vendas.infrastructure.knowledge_base").SqlAlchemyKnowledgeBase(
-                session
-            ),
+            KnowledgeBasePort, SqlAlchemyKnowledgeBase(session)
         )
 
     # --- factories / getters -------------------------------------------------
 
     def conversation_lock_factory(self, session: Session) -> ConversationLock:
         """Cria e retorna instância de ConversationLock para a sessão."""
-        lock_module = importlib.import_module(
-            "vendas.infrastructure.persistence.pg_conversation_lock"
-        )
-        return cast(ConversationLock, lock_module.PgAdvisoryConversationLock(session))
+        return cast(ConversationLock, PgAdvisoryConversationLock(session))
 
-    def get_outbox_dispatcher(self) -> Any:
-        dispatcher_module = importlib.import_module("vendas.infrastructure.queue.dispatcher")
-        channel_module = importlib.import_module(
-            "vendas.infrastructure.channels.evolution_whatsapp"
+    def get_outbox_dispatcher(self) -> OutboxDispatcher:
+        channel = EvolutionWhatsAppChannel(
+            base_url=settings.EVOLUTION_API_URL,
+            api_key=settings.EVOLUTION_API_KEY,
+            instance_name="default",
         )
-        channel = channel_module.EvolutionWhatsAppChannel()
-        return dispatcher_module.OutboxDispatcher(self.uow, channel)
+        return OutboxDispatcher(cast(UowProtocol, self.uow), channel)
 
     def get_process_cadence_step_command(self) -> ProcessCadenceStepCommand:
-        cmd_module = importlib.import_module("vendas.application.commands.process_cadence_step")
-        send_window_policy_module = importlib.import_module(
-            "vendas.domain.policies.send_window_policy"
-        )
-        send_window_policy = send_window_policy_module.SendWindowPolicy(self.clock)
-        return cast(
-            ProcessCadenceStepCommand,
-            cmd_module.ProcessCadenceStepCommand(
-                uow=self.uow, clock=self.clock, send_window_policy=send_window_policy
-            ),
+        send_window_policy = SendWindowPolicy(self.clock)
+        from vendas.domain.ports import UnitOfWork as ProcessUowProtocol
+
+        return ProcessCadenceStepCommand(
+            uow=cast(ProcessUowProtocol, self.uow),
+            clock=self.clock,
+            send_window_policy=send_window_policy,
         )
 
     # --- query helpers -------------------------------------------------------
 
     def get_overview_kpis_query(self) -> Any:
-        query_module = importlib.import_module(
-            "vendas.infrastructure.persistence.dashboard_query_factory"
-        )
-        return query_module.SessionFactoryDashboardQuery(self.session_factory)
+        return SessionFactoryDashboardQuery(self.session_factory)
 
     def get_handoff_conversations_query(self) -> Any:
-        query_module = importlib.import_module(
-            "vendas.infrastructure.persistence.conversation_query_factory"
-        )
-        return query_module.SessionFactoryConversationQuery(self.session_factory)
+        return SessionFactoryConversationQuery(self.session_factory)
 
     def get_conversation_history_query(self) -> Any:
-        query_module = importlib.import_module(
-            "vendas.infrastructure.persistence.conversation_query_factory"
-        )
-        return query_module.SessionFactoryConversationQuery(self.session_factory)
+        return SessionFactoryConversationQuery(self.session_factory)
 
     def get_catalog_preview_query(self) -> Any:
-        kb_module = importlib.import_module("vendas.application.queries.catalog")
         kb = self.knowledge_base_factory(self.session_factory())
-        return kb_module.CatalogPreviewQuery(kb)
+        return CatalogPreviewQuery(kb)
 
     def get_list_catalog_services_query(self) -> Any:
-        kb_module = importlib.import_module("vendas.application.queries.catalog")
         kb = self.knowledge_base_factory(self.session_factory())
-        return kb_module.ListCatalogServicesQuery(kb)
+        return ListCatalogServicesQuery(kb)
 
     def make_dashboard_query(self, session: Session) -> Any:
-        dashboard_query_module = importlib.import_module(
-            "vendas.infrastructure.persistence.dashboard_queries"
-        )
-        return dashboard_query_module.SqlAlchemyDashboardQuery(session)
+        return SqlAlchemyDashboardQuery(session)
 
     def get_catalog_repository(self, session: Session) -> CatalogRepository:
-        repo_module = importlib.import_module(
-            "vendas.infrastructure.persistence.catalog_repository"
-        )
-        return cast(CatalogRepository, repo_module.SqlAlchemyCatalogRepository(session, self.clock))
+        return cast(CatalogRepository, SqlAlchemyCatalogRepository(session, self.clock))
 
     def get_knowledge_base(self, session: Session) -> KnowledgeBasePort:
-        kb_module = importlib.import_module("vendas.infrastructure.knowledge_base")
-        return cast(KnowledgeBasePort, kb_module.SqlAlchemyKnowledgeBase(session))
+        return cast(KnowledgeBasePort, SqlAlchemyKnowledgeBase(session))
 
 
 container = Container()

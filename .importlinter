@@ -49,3 +49,10 @@ forbidden_modules =
     vendas.infrastructure.persistence.catalog_repository
 ignore_imports =
     vendas.interfaces.dashboard.main -> vendas.bootstrap.container
+    vendas.interfaces.api.app -> vendas.bootstrap.container
+    vendas.interfaces.worker.main -> vendas.bootstrap.container
+    vendas.interfaces.api.app -> vendas.bootstrap.logging
+    vendas.interfaces.api.app -> vendas.bootstrap.settings
+    vendas.interfaces.worker.main -> vendas.bootstrap.logging
+    vendas.interfaces.worker.main -> vendas.bootstrap.settings
+    vendas.interfaces.worker.main -> vendas.application.commands.process_cadence_step

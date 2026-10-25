@@ -1,32 +1,19 @@
-import hmac
 from collections.abc import Awaitable, Callable
 from typing import cast
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from vendas.bootstrap.settings import settings
 from vendas.domain.ports.auth import AuthContext, AuthPort, Role
 
 security = HTTPBearer(auto_error=False)
 security_dep = Security(security)
 
 
-class _DefaultSettingsAuthAdapter:
-    """Validador direto via settings para não criar dependência de interfaces com infrastructure."""
-
-    def verify_token(self, token: str) -> AuthContext | None:
-        if hmac.compare_digest(token, settings.API_ADMIN_TOKEN):
-            return AuthContext(user_id="admin", role=Role.ADMIN)
-        if hmac.compare_digest(token, settings.API_OPERATOR_TOKEN):
-            return AuthContext(user_id="operator", role=Role.OPERATOR)
-        return None
-
-
 async def get_auth_port(request: Request) -> AuthPort:
     auth_port = getattr(request.app.state, "auth_port", None)
     if auth_port is None:
-        return _DefaultSettingsAuthAdapter()
+        raise RuntimeError("AuthPort not configured in app.state")
     return cast(AuthPort, auth_port)
 
 
