@@ -12,6 +12,7 @@ from vendas.domain.errors import (
     ProviderRateLimited,
     ProviderUnavailable,
 )
+from vendas.domain.ports import BudgetTracker
 
 
 class ApifyLeadSource:
@@ -28,6 +29,7 @@ class ApifyLeadSource:
         backoff_factor: float = 1.0,
         daily_budget: int = 100,
         budget_store_path: str = ".apify_budget.json",
+        budget_tracker: BudgetTracker | None = None,
     ) -> None:
         self._api_key = api_key
         self._actor_id = actor_id
@@ -36,6 +38,22 @@ class ApifyLeadSource:
         self._backoff_factor = backoff_factor
         self._daily_budget = daily_budget
         self._budget_store_path = budget_store_path
+        self._budget_tracker = budget_tracker
+
+    def _check_and_increment_budget(self) -> None:
+        if self._budget_tracker is not None:
+            self._budget_tracker.check_and_consume(1)
+        else:
+            # legacy file-based fallback
+            today = date.today().isoformat()
+            budget = self._load_budget()
+            used = budget.get(today, 0)
+            if used >= self._daily_budget:
+                raise BudgetExceededError(
+                    f"Orçamento diário de {self._daily_budget} execuções excedido para {today}"
+                )
+            budget[today] = used + 1
+            self._save_budget(budget)
 
     def _load_budget(self) -> dict[str, int]:
         if not os.path.exists(self._budget_store_path):
@@ -43,7 +61,6 @@ class ApifyLeadSource:
         try:
             with open(self._budget_store_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # json.load returns Any; ensure correct type
                 if isinstance(data, dict):
                     return {k: int(v) for k, v in data.items()}
                 return {}
@@ -55,17 +72,6 @@ class ApifyLeadSource:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f)
         os.replace(tmp_path, self._budget_store_path)
-
-    def _check_and_increment_budget(self) -> None:
-        today = date.today().isoformat()
-        budget = self._load_budget()
-        used = budget.get(today, 0)
-        if used >= self._daily_budget:
-            raise BudgetExceededError(
-                f"Orçamento diário de {self._daily_budget} execuções excedido para {today}"
-            )
-        budget[today] = used + 1
-        self._save_budget(budget)
 
     def _request_with_retry(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         attempt = 0

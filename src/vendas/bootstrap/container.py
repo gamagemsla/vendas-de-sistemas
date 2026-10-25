@@ -14,7 +14,7 @@ from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogS
 from vendas.bootstrap.settings import settings
 from vendas.domain.policies.eligibility_policy import EligibilityPolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
-from vendas.domain.ports import Clock, JobQueue
+from vendas.domain.ports import BudgetTracker, Clock, JobQueue
 from vendas.domain.ports import UnitOfWork as UowProtocol
 from vendas.domain.ports.auth import AuthPort
 from vendas.domain.ports.catalog import CatalogRepository
@@ -25,6 +25,7 @@ from vendas.infrastructure.auth import SettingsAuthAdapter
 from vendas.infrastructure.channels.evolution_whatsapp import EvolutionWhatsAppChannel
 from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
+from vendas.infrastructure.llm.gemini import GeminiConversationAgent
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 from vendas.infrastructure.persistence.conversation_query_factory import (
     SessionFactoryConversationQuery,
@@ -42,6 +43,7 @@ from vendas.infrastructure.persistence.pg_conversation_lock import PgAdvisoryCon
 from vendas.infrastructure.persistence.suppression_port import SQLAlchemySuppressionPort
 from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from vendas.infrastructure.providers.apify import ApifyLeadSource
+from vendas.infrastructure.providers.budget_tracker import FileBudgetTracker
 from vendas.infrastructure.providers.firecrawl import FirecrawlLeadEnricher
 from vendas.infrastructure.queue.dispatcher import OutboxDispatcher
 from vendas.infrastructure.queue.job_queue import InMemoryJobQueue
@@ -76,10 +78,33 @@ class Container:
             KnowledgeBasePort, SqlAlchemyKnowledgeBase(session)
         )
 
+        # Budget trackers
+        self.apify_budget_tracker: BudgetTracker = self._make_budget_tracker(
+            "apify", int(settings.APIFY_DAILY_BUDGET)
+        )
+        self.firecrawl_budget_tracker: BudgetTracker = self._make_budget_tracker(
+            "firecrawl", int(settings.FIRECRAWL_DAILY_BUDGET)
+        )
+        self.gemini_budget_tracker: BudgetTracker = self._make_budget_tracker(
+            "gemini", int(settings.GEMINI_DAILY_BUDGET)
+        )
+
         # Providers
-        self.firecrawl_enricher = FirecrawlLeadEnricher(api_key=settings.FIRECRAWL_API_KEY)
+        self.firecrawl_enricher = FirecrawlLeadEnricher(
+            api_key=settings.FIRECRAWL_API_KEY,
+            budget_tracker=self.firecrawl_budget_tracker,
+        )
 
     # --- factories / getters -------------------------------------------------
+
+    def _make_budget_tracker(self, provider_name: str, daily_limit: int) -> BudgetTracker:
+        store_path = f".budgets/{provider_name}_budget.json"
+        return FileBudgetTracker(
+            provider_name=provider_name,
+            daily_limit=daily_limit,
+            store_path=store_path,
+            clock=self.clock,
+        )
 
     def conversation_lock_factory(self, session: Session) -> ConversationLock:
         """Cria e retorna instância de ConversationLock para a sessão."""
@@ -107,6 +132,7 @@ class Container:
         lead_source = ApifyLeadSource(
             api_key=settings.APIFY_API_KEY,
             actor_id=settings.APIFY_ACTOR_ID,
+            budget_tracker=self.apify_budget_tracker,
         )
         return IngestLeadsCommand(
             uow=cast(UowProtocol, self.uow),
@@ -140,6 +166,12 @@ class Container:
             uow=cast(UowProtocol, self.uow),
             clock=self.clock,
             eligibility_policy=eligibility_policy,
+        )
+
+    def get_gemini_agent(self) -> GeminiConversationAgent:
+        return GeminiConversationAgent(
+            api_key=settings.GEMINI_API_KEY,
+            budget_tracker=self.gemini_budget_tracker,
         )
 
     # --- query helpers -------------------------------------------------------

@@ -53,6 +53,7 @@ class Repository(Protocol[TEntity]):
 # Clock Port
 # =============================================================================
 
+from .budget_tracker import BudgetTracker
 from .clock import Clock
 
 # =============================================================================
@@ -692,6 +693,7 @@ __all__ = [
     "AgentDecision",
     "AuthContext",
     "AuthPort",
+    "BudgetTracker",
     "Clock",
     "Conversation",
     "ConversationAgent",

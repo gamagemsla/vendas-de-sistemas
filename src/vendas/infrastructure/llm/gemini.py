@@ -1,7 +1,7 @@
 import google.generativeai as genai
 from pydantic import BaseModel, Field
 
-from vendas.domain.ports import AgentContext, AgentDecision
+from vendas.domain.ports import AgentContext, AgentDecision, BudgetTracker
 from vendas.infrastructure.llm.prompts import PROMPT_VERSION, build_gemini_prompt
 
 
@@ -37,9 +37,15 @@ class AgentDecisionDTO(BaseModel):
 class GeminiConversationAgent:
     """Adaptador de infraestrutura para o agente conversacional baseado no Google Gemini."""
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-pro") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "gemini-1.5-pro",
+        budget_tracker: BudgetTracker | None = None,
+    ) -> None:
         genai.configure(api_key=api_key)
         self._model_name = model_name
+        self._budget_tracker = budget_tracker
 
         # Configura o modelo para impor obrigatoriamente um schema Pydantic na saída (Structured Outputs)
         self._model = genai.GenerativeModel(
@@ -57,6 +63,9 @@ class GeminiConversationAgent:
 
     def decide(self, context: AgentContext) -> AgentDecision:
         """Executa a chamada ao Gemini com guardrails de schema e fallback seguro."""
+        if self._budget_tracker is not None:
+            self._budget_tracker.check_and_consume(1)
+
         full_prompt = build_gemini_prompt(context)
 
         try:

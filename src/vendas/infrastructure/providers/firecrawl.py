@@ -13,7 +13,7 @@ from vendas.domain.errors import (
     ProviderUnavailable,
 )
 from vendas.domain.policies.retry_policy import calculate_backoff_delay
-from vendas.domain.ports import EnrichedLeadData, LeadEnricher
+from vendas.domain.ports import BudgetTracker, EnrichedLeadData, LeadEnricher
 from vendas.domain.value_objects import Cnpj
 
 logger = structlog.get_logger(__name__)
@@ -29,6 +29,7 @@ class FirecrawlLeadEnricher(LeadEnricher):
         max_retries: int = 3,
         circuit_breaker_threshold: int = 5,
         circuit_breaker_timeout: float = 60.0,
+        budget_tracker: BudgetTracker | None = None,
     ) -> None:
         self._api_key = api_key
         self._client = client or httpx.Client(timeout=30.0)
@@ -37,6 +38,7 @@ class FirecrawlLeadEnricher(LeadEnricher):
         self._circuit_breaker_timeout = circuit_breaker_timeout
         self._consecutive_failures = 0
         self._circuit_open_at: float | None = None
+        self._budget_tracker = budget_tracker
 
     @property
     def enricher_name(self) -> str:
@@ -82,6 +84,8 @@ class FirecrawlLeadEnricher(LeadEnricher):
     def enrich(self, website_url: str) -> dict[str, Any] | None:
         """Realiza o scraping e extração estruturada do site do lead."""
         self._circuit_breaker_check()
+        if self._budget_tracker is not None:
+            self._budget_tracker.check_and_consume(1)
 
         api_url = "https://api.firecrawl.dev/v1/scrape"
         headers = {
