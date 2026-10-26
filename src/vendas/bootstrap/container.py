@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, cast
 
 from sqlalchemy import create_engine
@@ -12,6 +14,7 @@ from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
 from vendas.bootstrap.settings import settings
+from vendas.domain.policies.cadence_policy import CadencePolicy
 from vendas.domain.policies.eligibility_policy import EligibilityPolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
 from vendas.domain.ports import BudgetTracker, Clock, JobQueue
@@ -70,6 +73,9 @@ class Container:
         self.auth_port: AuthPort = SettingsAuthAdapter()
         self.job_queue: JobQueue = InMemoryJobQueue()
 
+        # Load cadence definitions
+        self.cadence_policy: CadencePolicy = self._load_cadence_policy()
+
         self.uow = SQLAlchemyUnitOfWork(self.session_factory, self.clock)
         self.catalog_repository_factory: Callable[[Session], CatalogRepository] = lambda session: (
             cast(CatalogRepository, SqlAlchemyCatalogRepository(session, self.clock))
@@ -106,6 +112,42 @@ class Container:
             clock=self.clock,
         )
 
+    def _load_cadence_policy(self) -> CadencePolicy:
+        """Load cadence definitions from config/cadences/ and create CadencePolicy."""
+        from vendas.domain.entities.cadence_definition import (
+            CadenceDefinitionSchema,
+            register_cadence,
+        )
+
+        cadences_dir = Path(__file__).parent.parent.parent.parent / "config" / "cadences"
+        if not cadences_dir.exists():
+            # Fallback to default hardcoded steps if config directory doesn't exist
+            return CadencePolicy()
+
+        for json_file in cadences_dir.glob("*.json"):
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                definition = CadenceDefinitionSchema.model_validate(data)
+                register_cadence(definition)
+            except (json.JSONDecodeError, ValueError, OSError) as e:
+                # Log error but continue loading other files
+                print(f"Warning: Failed to load cadence from {json_file}: {e}")
+
+        # Get the default cadence (cold_outreach_b2b) latest version
+        try:
+            default_cadence = CadenceDefinitionSchema.model_validate(
+                json.loads(
+                    (cadences_dir / "cold_outreach_b2b_v1.0.0.json").read_text(encoding="utf-8")
+                )
+            )
+            return CadencePolicy(
+                steps=default_cadence.to_policy_steps(), max_steps=default_cadence.max_steps
+            )
+        except (json.JSONDecodeError, ValueError, OSError):
+            # Fallback to default hardcoded steps
+            return CadencePolicy()
+
     def conversation_lock_factory(self, session: Session) -> ConversationLock:
         """Cria e retorna instância de ConversationLock para a sessão."""
         return cast(ConversationLock, PgAdvisoryConversationLock(session))
@@ -126,6 +168,7 @@ class Container:
             uow=cast(ProcessUowProtocol, self.uow),
             clock=self.clock,
             send_window_policy=send_window_policy,
+            cadence_policy=self.cadence_policy,
         )
 
     def get_ingest_leads_command(self) -> IngestLeadsCommand:

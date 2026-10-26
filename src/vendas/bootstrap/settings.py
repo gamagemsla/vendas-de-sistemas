@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     AUTOMATION_ENABLED: bool = False
     KILL_SWITCH: bool = False
 
+    # Worker agendamento
+    WORKER_POLL_INTERVAL_SECONDS: int = 60
+    WORKER_BATCH_SIZE: int = 10
+    WORKER_INGEST_INTERVAL_SECONDS: int = 300
+    WORKER_ENRICH_INTERVAL_SECONDS: int = 60
+    INGEST_SEARCH_QUERY: str = '{"location": "BR", "industry": "software"}'
+
     # Orçamentos Diários dos Provedores
     APIFY_DAILY_BUDGET: float = 10.0
     FIRECRAWL_DAILY_BUDGET: float = 10.0

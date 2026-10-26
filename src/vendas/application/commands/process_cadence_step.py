@@ -2,6 +2,7 @@ from typing import Any
 
 import structlog
 
+from vendas.domain.policies.cadence_policy import CadencePolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
 from vendas.domain.ports import UnitOfWork
 
@@ -11,10 +12,17 @@ logger = structlog.get_logger()
 class ProcessCadenceStepCommand:
     """Processa etapas de cadências vencidas de forma atômica (Outbox + Avanço de Passo)."""
 
-    def __init__(self, uow: UnitOfWork, clock: Any, send_window_policy: SendWindowPolicy) -> None:
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        clock: Any,
+        send_window_policy: SendWindowPolicy,
+        cadence_policy: CadencePolicy,
+    ) -> None:
         self._uow = uow
         self._clock = clock
         self._send_window_policy = send_window_policy
+        self._cadence_policy = cadence_policy
 
     def execute(self, batch_size: int = 10) -> int:
         processed_count = 0
@@ -65,10 +73,15 @@ class ProcessCadenceStepCommand:
                     continue
 
                 # Prepara o payload da mensagem baseada no passo atual
+                current_step = enrollment.current_step
+                next_step_def = self._cadence_policy.get_next_step(current_step)
+                template_name = next_step_def.template_name if next_step_def else "unknown"
+
                 message_payload = {
                     "lead_id": lead.id,
                     "phone": phone_e164,
-                    "step": enrollment.current_step,
+                    "step": current_step,
+                    "template_name": template_name,
                     "content": f"Olá {lead.name}, passando para dar continuidade ao nosso contato.",
                 }
 
@@ -79,9 +92,11 @@ class ProcessCadenceStepCommand:
                     idempotency_key=f"cadence-{lead.id}-step-{enrollment.current_step}",
                 )
 
-                # Avança a cadência para o próximo intervalo/passo
-                next_step = enrollment.current_step + 1
-                enrollment.advance_step(next_step=next_step, next_run_at=now, at=now)
+                # Avança a cadência para o próximo intervalo/passo usando a policy para calcular o delay
+                next_step = current_step + 1
+                delay = self._cadence_policy.get_delay_until_next(current_step)
+                next_run_at = now + delay if delay else now
+                enrollment.advance_step(next_step=next_step, next_run_at=next_run_at, at=now)
                 uow.enrollments.save(enrollment)
                 processed_count += 1
 

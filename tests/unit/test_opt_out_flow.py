@@ -9,6 +9,7 @@ from vendas.application.commands.process_cadence_step import ProcessCadenceStepC
 from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, EnrollmentStatus
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.suppression_record import SuppressionReason, SuppressionRecord
+from vendas.domain.policies.cadence_policy import CadencePolicy
 from vendas.domain.policies.opt_out_policy import OptOutPolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
 from vendas.domain.value_objects import Phone
@@ -194,8 +195,12 @@ class TestOptOutFlow:
         self.leads.save(self.lead)
 
         send_window_policy = SendWindowPolicy(clock=self.clock)
+        cadence_policy = CadencePolicy()
         command = ProcessCadenceStepCommand(
-            uow=self.uow, clock=self.clock, send_window_policy=send_window_policy
+            uow=self.uow,
+            clock=self.clock,
+            send_window_policy=send_window_policy,
+            cadence_policy=cadence_policy,
         )
 
         # Act
@@ -220,8 +225,12 @@ class TestOptOutFlow:
         self.leads.save(self.lead)
 
         send_window_policy = SendWindowPolicy(clock=self.clock)
+        cadence_policy = CadencePolicy()
         command = ProcessCadenceStepCommand(
-            uow=self.uow, clock=self.clock, send_window_policy=send_window_policy
+            uow=self.uow,
+            clock=self.clock,
+            send_window_policy=send_window_policy,
+            cadence_policy=cadence_policy,
         )
 
         # Act

@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "name": "cold_outreach_b2b",
+  "description": "Default B2B cold outreach cadence with WhatsApp and Email fallback",
+  "steps": [
+    {
+      "step_number": 1,
+      "channel": "whatsapp",
+      "template_name": "initial_contact",
+      "delay_hours": 0
+    },
+    {
+      "step_number": 2,
+      "channel": "whatsapp",
+      "template_name": "follow_up_1",
+      "delay_hours": 48
+    },
+    {
+      "step_number": 3,
+      "channel": "whatsapp",
+      "template_name": "follow_up_2",
+      "delay_hours": 72
+    },
+    {
+      "step_number": 4,
+      "channel": "whatsapp",
+      "template_name": "follow_up_3",
+      "delay_hours": 120
+    },
+    {
+      "step_number": 5,
+      "channel": "email",
+      "template_name": "fallback_email_1",
+      "delay_hours": 48,
+      "is_fallback": true,
+      "fallback_trigger": "on_consecutive_failures",
+      "max_consecutive_failures": 2
+    },
+    {
+      "step_number": 6,
+      "channel": "email",
+      "template_name": "fallback_email_2",
+      "delay_hours": 72,
+      "is_fallback": true
+    },
+    {
+      "step_number": 7,
+      "channel": "email",
+      "template_name": "fallback_email_3",
+      "delay_hours": 120,
+      "is_fallback": true
+    }
+  ],
+  "max_steps": 7,
+  "default_fallback_channel": "email",
+  "global_fallback_trigger": "on_consecutive_failures",
+  "global_max_consecutive_failures": 2
+}
