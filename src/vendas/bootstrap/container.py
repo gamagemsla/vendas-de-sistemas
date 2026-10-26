@@ -209,6 +209,7 @@ class Container:
             uow=cast(UowProtocol, self.uow),
             clock=self.clock,
             eligibility_policy=eligibility_policy,
+            cadence_policy=self.cadence_policy,
         )
 
     def get_gemini_agent(self) -> GeminiConversationAgent:
