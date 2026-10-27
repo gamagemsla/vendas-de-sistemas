@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vendas.application.commands.enrich_lead import EnrichLeadCommand
 from vendas.application.commands.enroll_in_cadence import EnrollInCadenceCommand
+from vendas.application.commands.handle_inbound import HandleInboundCommand
 from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
@@ -34,6 +35,7 @@ from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
 from vendas.infrastructure.llm.gemini import GeminiConversationAgent
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
+from vendas.infrastructure.persistence.channel_state import SQLAlchemyChannelStatePort
 from vendas.infrastructure.persistence.conversation_query_factory import (
     SessionFactoryConversationQuery,
 )
@@ -81,12 +83,14 @@ class Container:
         self.cadence_policy: CadencePolicy = self._load_cadence_policy()
 
         self.uow = SQLAlchemyUnitOfWork(self.session_factory, self.clock)
+        self.channel_state_port: ChannelStatePort = SQLAlchemyChannelStatePort(self.session_factory)
         self.catalog_repository_factory: Callable[[Session], CatalogRepository] = lambda session: (
             cast(CatalogRepository, SqlAlchemyCatalogRepository(session, self.clock))
         )
         self.knowledge_base_factory: Callable[[Session], KnowledgeBasePort] = lambda session: cast(
             KnowledgeBasePort, SqlAlchemyKnowledgeBase(session)
         )
+        self.knowledge_base: KnowledgeBasePort = self.knowledge_base_factory(self.session_factory())
 
         # Budget trackers
         self.apify_budget_tracker: BudgetTracker = self._make_budget_tracker(
@@ -198,17 +202,12 @@ class Container:
             def set_last_sent_at(self, lead_id: str, channel: str, sent_at: datetime) -> None:
                 self._last_sent[(lead_id, channel)] = sent_at
 
-        # ChannelStatePort that always reports connected (can be replaced with real check)
-        class AlwaysConnectedChannelState(ChannelStatePort):
-            def is_connected(self, channel: str = "whatsapp") -> bool:
-                return True
-
         daily_cap_repo = InMemoryDailyCapRepository()
         min_interval_repo = InMemoryMinIntervalRepository()
         daily_cap_policy = DailyCapPolicy(repository=daily_cap_repo, clock=self.clock)
         min_interval_policy = MinIntervalPolicy(repository=min_interval_repo, clock=self.clock)
         legal_basis_port = SQLAlchemyLegalBasisPort()
-        channel_state_port = AlwaysConnectedChannelState()
+        channel_state_port = self.channel_state_port
 
         return ProcessCadenceStepCommand(
             uow=cast(ProcessUowProtocol, self.uow),
@@ -267,6 +266,15 @@ class Container:
         return GeminiConversationAgent(
             api_key=settings.GEMINI_API_KEY,
             budget_tracker=self.gemini_budget_tracker,
+        )
+
+    def get_handle_inbound_command(self) -> HandleInboundCommand:
+        return HandleInboundCommand(
+            uow=cast(UowProtocol, self.uow),
+            agent=self.get_gemini_agent(),
+            knowledge_base=self.knowledge_base,
+            clock=self.clock,
+            conversation_lock_factory=self.conversation_lock_factory,
         )
 
     # --- query helpers -------------------------------------------------------

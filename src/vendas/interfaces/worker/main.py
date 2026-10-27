@@ -11,6 +11,7 @@ from typing import Any, NoReturn
 import structlog
 
 from vendas.application.commands.enrich_lead import EnrichLeadCommand
+from vendas.application.commands.handle_inbound import HandleInboundCommand
 from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.bootstrap.container import container
@@ -49,6 +50,7 @@ class Worker:
         )
         self._ingest_cmd: IngestLeadsCommand = container.get_ingest_leads_command()
         self._enrich_cmd: EnrichLeadCommand = container.get_enrich_lead_command()
+        self._inbound_cmd: HandleInboundCommand = container.get_handle_inbound_command()
         self._job_queue: Any = container.job_queue
 
         # Signal handlers para shutdown gracioso
@@ -84,6 +86,9 @@ class Worker:
 
     def _run_cadence_cycle(self) -> int:
         """Executa um ciclo de processamento de cadências."""
+        if settings.CADENCE_GLOBAL_PAUSE:
+            logger.warning("cadencia_global_pausada", cadence_global_pause=True)
+            return 0
         cid = set_correlation_id(f"cadence-{int(time.time() * 1000)}")
         try:
             logger.info("iniciando_ciclo_processamento_cadencia", correlation_id=cid)
@@ -140,6 +145,41 @@ class Worker:
         finally:
             clear_correlation_id()
 
+    def _run_inbound_cycle(self) -> int:
+        \"\"\"Executa um ciclo de processamento de mensagens inbound (handle_inbound).\"\"\"
+        if self._check_kill_switch():
+            return 0
+        processed = 0
+        cid = set_correlation_id(f\"inbound-{int(time.time() * 1000)}\")
+        try:
+            logger.info(\"iniciando_ciclo_inbound\", correlation_id=cid)
+            for _ in range(self._batch_size):
+                job = self._job_queue.dequeue()
+                if not job:
+                    break
+                if job.name != \"handle_inbound\":
+                    # Ignora jobs de outros tipos
+                    continue
+                sender_phone = job.payload.get(\"sender_phone\")
+                message_text = job.payload.get(\"message_text\")
+                provider_message_id = job.payload.get(\"provider_message_id\")
+                if sender_phone and message_text and provider_message_id:
+                    self._inbound_cmd.execute(
+                        sender_phone=sender_phone,
+                        message_text=message_text,
+                        provider_message_id=provider_message_id,
+                    )
+                    processed += 1
+                else:
+                    logger.warning(\"job_inbound_payload_invalido\", job_id=str(job.id))
+            logger.info(\"ciclo_inbound_concluido\", processed=processed, correlation_id=cid)
+            return processed
+        except Exception as exc:
+            logger.exception(\"erro_no_ciclo_inbound\", error=str(exc), correlation_id=cid)
+            return 0
+        finally:
+            clear_correlation_id()
+
     def run(self) -> NoReturn:
         """Loop principal do worker — roda até shutdown ou KILL_SWITCH."""
         logger.info(
@@ -160,11 +200,14 @@ class Worker:
             # 2. Ciclo de despacho da outbox
             self._run_dispatch_cycle()
 
-            # 3. KILL_SWITCH check entre ciclos
+            # 3. Ciclo de processamento de inbound (handle_inbound)
+            self._run_inbound_cycle()
+
+            # 4. KILL_SWITCH check entre ciclos
             if self._check_kill_switch():
                 break
 
-            # 4. Ciclo de processamento de cadências
+            # 5. Ciclo de processamento de cadências
             self._run_cadence_cycle()
 
             # 5. KILL_SWITCH check antes de ingestão
