@@ -26,6 +26,7 @@ class ProcessCadenceStepCommand:
         channel_state_port: ChannelStatePort,
         daily_cap_policy: DailyCapPolicy,
         min_interval_policy: MinIntervalPolicy,
+        unsubscribe_base_url: str = "http://localhost:8000/unsubscribe",
     ) -> None:
         self._uow = uow
         self._clock = clock

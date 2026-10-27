@@ -15,9 +15,20 @@ logger = structlog.get_logger()
 class OutboxDispatcher:
     """Processa a tabela outbox de forma transacional, garantindo idempotência e DRY_RUN."""
 
-    def __init__(self, uow: UnitOfWork, channel: MessageChannel) -> None:
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        channel: MessageChannel | None = None,
+        channels: dict[str, MessageChannel] | None = None,
+    ) -> None:
         self._uow = uow
-        self._channel = channel
+        # Retrocompatibilidade: se channel único for passado, usa como default "whatsapp"
+        if channel is not None and channels is None:
+            self._channels = {"whatsapp": channel}
+        elif channels is not None:
+            self._channels = channels
+        else:
+            raise ValueError("Deve fornecer 'channel' ou 'channels'")
 
     def dispatch_batch(self, batch_size: int = 10) -> int:
         # Interrupção imediata se KILL_SWITCH ativo — antes de qualquer transação
@@ -51,6 +62,12 @@ class OutboxDispatcher:
                     # Valida payload antes de qualquer envio (DRY_RUN ou real)
                     validated_payload = validate_outbox_payload(item.event_type, item.payload)
 
+                    # Identifica o canal de destino pelo payload (default: whatsapp)
+                    target_channel = validated_payload.get("channel", "whatsapp")
+                    channel = self._channels.get(target_channel)
+                    if channel is None:
+                        raise ValueError(f"Canal não configurado: {target_channel}")
+
                     # REGRA DE OURO: DRY_RUN=true impede qualquer envio real
                     if settings.DRY_RUN:
                         logger.info(
@@ -59,6 +76,7 @@ class OutboxDispatcher:
                             event_type=item.event_type,
                             payload=validated_payload,
                             idempotency_key=item.idempotency_key,
+                            channel=target_channel,
                         )
                         uow.outbox.mark_sent(str(item.id))
                     else:
@@ -68,7 +86,7 @@ class OutboxDispatcher:
                             )
 
                         # Envio real através do Port do Canal de Mensagem
-                        self._channel.send(validated_payload)
+                        channel.send(validated_payload)
                         uow.outbox.mark_sent(str(item.id))
 
                     processed_count += 1

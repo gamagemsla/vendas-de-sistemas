@@ -28,6 +28,7 @@ from vendas.domain.ports.conversation_lock import ConversationLock
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
 from vendas.domain.ports.uow import UnitOfWork as UowProtocolForDispatcher
 from vendas.infrastructure.auth import SettingsAuthAdapter
+from vendas.infrastructure.channels.email_channel import EmailChannel
 from vendas.infrastructure.channels.evolution_whatsapp import EvolutionWhatsAppChannel
 from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
@@ -156,12 +157,16 @@ class Container:
         return cast(ConversationLock, PgAdvisoryConversationLock(session))
 
     def get_outbox_dispatcher(self) -> OutboxDispatcher:
-        channel = EvolutionWhatsAppChannel(
+        whatsapp_channel = EvolutionWhatsAppChannel(
             base_url=settings.EVOLUTION_API_URL,
             api_key=settings.EVOLUTION_API_KEY,
             instance_name="default",
         )
-        return OutboxDispatcher(cast(UowProtocolForDispatcher, self.uow), channel)
+        email_channel = EmailChannel()
+        return OutboxDispatcher(
+            cast(UowProtocolForDispatcher, self.uow),
+            channels={"whatsapp": whatsapp_channel, "email": email_channel},
+        )
 
     def get_process_cadence_step_command(self) -> ProcessCadenceStepCommand:
         send_window_policy = SendWindowPolicy(self.clock)
@@ -214,6 +219,7 @@ class Container:
             channel_state_port=channel_state_port,
             daily_cap_policy=daily_cap_policy,
             min_interval_policy=min_interval_policy,
+            unsubscribe_base_url=settings.UNSUBSCRIBE_BASE_URL,
         )
 
     def get_ingest_leads_command(self) -> IngestLeadsCommand:
