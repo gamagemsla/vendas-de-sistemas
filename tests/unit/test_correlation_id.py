@@ -104,8 +104,8 @@ def test_dispatcher_binds_correlation_id_per_item(monkeypatch):
 
     # Ensure claim_pending called
     mock_uow.outbox.claim_pending.assert_called_once_with(batch_size=10)
-    # Ensure mark_as_sent called for each (DRY_RUN default true in settings)
-    assert mock_uow.outbox.mark_as_sent.call_count == 2
+    # Ensure mark_sent called for each (DRY_RUN default true in settings)
+    assert mock_uow.outbox.mark_sent.call_count == 2
 
 
 def test_middleware_cleans_correlation_id_on_unhandled_exception():

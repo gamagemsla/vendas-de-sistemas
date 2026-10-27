@@ -14,8 +14,8 @@ from vendas.domain.entities.conversation import Conversation, ConversationState,
 from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.outbox_message import OutboxMessage
+from vendas.domain.entities.outbox_message import OutboxStatus as DomainOutboxStatus
 from vendas.domain.entities.suppression_record import SuppressionReason, SuppressionRecord
-from vendas.domain.policies.retry_policy import compute_next_retry_at
 from vendas.domain.ports import Clock, ConversationFilter, LeadFilter
 from vendas.domain.value_objects import Cnpj, Email, Phone
 from vendas.infrastructure.clock import SystemClock
@@ -35,11 +35,13 @@ from vendas.infrastructure.persistence.orm_models import (
     LeadModel,
     MessageModel,
     OutboxModel,
-    OutboxStatus,
     SuppressionListModel,
 )
 from vendas.infrastructure.persistence.orm_models import (
     ConversationState as ORMConversationState,
+)
+from vendas.infrastructure.persistence.orm_models import (
+    MessageEvent as MessageEventModel,
 )
 
 
@@ -439,12 +441,32 @@ class SQLAlchemyOutboxRepository:
         return result > 0
 
     def mark_sent(self, message_id: UUID | str, external_id: str | None = None) -> None:
-        """Marca como enviada."""
+        """Marca como enviada e registra recibo em message_events."""
         model = self._session.query(OutboxModel).filter_by(id=message_id).first()
-        if model:
-            model.status = OutboxStatus.SENT
-            model.provider_message_id = external_id
-            model.sent_at = self._clock.now()
+        if not model:
+            return
+        # Carrega entidade de domínio
+        entity = OutboxMapper.to_domain(model)
+        if not entity:
+            return
+        now = self._clock.now()
+        entity.mark_sent(external_id=external_id, at=now)
+        # Sincroniza de volta ao modelo ORM
+        updated_model = OutboxMapper.to_orm(entity)
+        if updated_model:
+            self._session.merge(updated_model)
+        # Registra recibo de entrega
+        receipt = MessageEventModel(
+            message_id=entity.id,
+            event_type="DELIVERED",
+            provider_event_id=external_id,
+            provider_name=entity.channel,
+            payload=entity.payload,
+            processed=True,
+            created_at=now,
+            idempotency_key=entity.idempotency_key,
+        )
+        self._session.add(receipt)
 
     def mark_failed(
         self,
@@ -452,26 +474,33 @@ class SQLAlchemyOutboxRepository:
         error: str,
         will_retry: bool,
     ) -> None:
-        """Marca como falhada."""
+        """Marca como falhada, aplica retry/backoff ou move para DEAD_LETTER, e registra evento."""
         model = self._session.query(OutboxModel).filter_by(id=message_id).first()
         if not model:
             return
-        if will_retry:
-            next_attempt = model.attempts + 1
-            now = self._clock.now()
-            scheduled_at = compute_next_retry_at(
-                now=now,
-                retry_count=next_attempt,
-                jitter=True,
-            )
-            model.attempts = next_attempt
-            model.error_message = error
-            model.status = OutboxStatus.PENDING
-            model.scheduled_at = scheduled_at
-        else:
-            model.attempts = model.attempts + 1
-            model.error_message = error
-            model.status = OutboxStatus.FAILED
+        entity = OutboxMapper.to_domain(model)
+        if not entity:
+            return
+        now = self._clock.now()
+        entity.mark_failed(error=error, will_retry=will_retry, at=now)
+        updated_model = OutboxMapper.to_orm(entity)
+        if updated_model:
+            self._session.merge(updated_model)
+        # Determina tipo de evento conforme status final
+        event_type = "FAILED"
+        if entity.status == DomainOutboxStatus.DEAD_LETTER:
+            event_type = "DEAD_LETTER"
+        receipt = MessageEventModel(
+            message_id=entity.id,
+            event_type=event_type,
+            provider_event_id=None,
+            provider_name=entity.channel,
+            payload=entity.payload,
+            processed=True,
+            created_at=now,
+            idempotency_key=entity.idempotency_key,
+        )
+        self._session.add(receipt)
 
     def get_dead_letters(self, limit: int = 100) -> list[OutboxMessage]:
         """Busca mensagens em dead letter."""

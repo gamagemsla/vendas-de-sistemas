@@ -60,7 +60,7 @@ class OutboxDispatcher:
                             payload=validated_payload,
                             idempotency_key=item.idempotency_key,
                         )
-                        uow.outbox.mark_as_sent(str(item.id))
+                        uow.outbox.mark_sent(str(item.id))
                     else:
                         if not settings.AUTOMATION_ENABLED:
                             raise RuntimeError(
@@ -69,19 +69,29 @@ class OutboxDispatcher:
 
                         # Envio real através do Port do Canal de Mensagem
                         self._channel.send(validated_payload)
-                        uow.outbox.mark_as_sent(str(item.id))
+                        uow.outbox.mark_sent(str(item.id))
 
                     processed_count += 1
 
-                except (
-                    OSError,
-                    RuntimeError,
-                    TimeoutError,
-                    ValueError,
-                    InvalidOutboxPayloadError,
-                ) as exc:
-                    logger.error("erro_envio_outbox", outbox_id=item.id, error=str(exc))
-                    uow.outbox.mark_as_failed(str(item.id), error_message=str(exc))
+                except Exception as exc:  # noqa: BLE001
+                    # Classificação de falha: permanente vs transitória
+                    if isinstance(exc, (InvalidOutboxPayloadError, ValueError)):
+                        will_retry = False
+                    elif isinstance(exc, (OSError, TimeoutError, RuntimeError)):
+                        will_retry = True
+                    else:
+                        # Por segurança, trata exceções não previstas como transitórias
+                        will_retry = True
+
+                    logger.error(
+                        "erro_envio_outbox",
+                        outbox_id=item.id,
+                        error=str(exc),
+                        will_retry=will_retry,
+                    )
+                    uow.outbox.mark_failed(
+                        str(item.id), error_message=str(exc), will_retry=will_retry
+                    )
                 finally:
                     clear_correlation_id()
 

@@ -25,16 +25,16 @@ class FakeOutboxRepo:
     def __init__(self, items: list[FakeOutboxItem]) -> None:
         self._items = items
         self.marked_sent: list[int] = []
-        self.marked_failed: list[tuple[int, str]] = []
+        self.marked_failed: list[tuple[int, str, bool]] = []
 
     def claim_pending(self, batch_size: int) -> list[FakeOutboxItem]:
         return self._items[:batch_size]
 
-    def mark_as_sent(self, outbox_id: str) -> None:
+    def mark_sent(self, outbox_id: str) -> None:
         self.marked_sent.append(int(outbox_id))
 
-    def mark_as_failed(self, outbox_id: str, error_message: str) -> None:
-        self.marked_failed.append((int(outbox_id), error_message))
+    def mark_failed(self, outbox_id: str, error_message: str, will_retry: bool) -> None:
+        self.marked_failed.append((int(outbox_id), error_message, will_retry))
 
 
 class FakeUow:
@@ -106,7 +106,7 @@ def test_dry_run_false_automation_disabled_marks_failed(
     assert processed == 0
     assert outbox_repo.marked_sent == []
     assert outbox_repo.marked_failed == [
-        (1, "Automação desativada via configuração (AUTOMATION_ENABLED=false)")
+        (1, "Automação desativada via configuração (AUTOMATION_ENABLED=false)", True)
     ]
     channel.send.assert_not_called()
     assert uow.committed is True

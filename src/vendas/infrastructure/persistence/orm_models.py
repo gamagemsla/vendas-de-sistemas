@@ -564,6 +564,7 @@ class MessageEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     message: Mapped[Message] = relationship("Message", back_populates="events", lazy="selectin")
 
