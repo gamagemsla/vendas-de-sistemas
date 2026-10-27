@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     FIRECRAWL_DAILY_BUDGET: float = 10.0
     GEMINI_DAILY_BUDGET: float = 10.0
 
+    # Limites de Envio (single-tenant, global por canal)
+    DAILY_SEND_CAP: int = 1000
+    MIN_SEND_INTERVAL_SECONDS: int = 60
+
     # Chaves e Endpoints Externos
     APIFY_API_KEY: str = ""
     APIFY_ACTOR_ID: str = ""

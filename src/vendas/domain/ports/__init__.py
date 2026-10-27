@@ -679,6 +679,19 @@ class LegalBasisPort(Protocol):
 
 
 # =============================================================================
+# Channel State Port
+# =============================================================================
+
+
+class ChannelStatePort(Protocol):
+    """Port para verificar estado de conexão do canal (ex: Evolution WhatsApp)."""
+
+    def is_connected(self, channel: str = "whatsapp") -> bool:
+        """Retorna True se o canal está conectado e pronto para envio."""
+        ...
+
+
+# =============================================================================
 # Conversation Lock Port
 # =============================================================================
 
@@ -694,6 +707,7 @@ __all__ = [
     "AuthContext",
     "AuthPort",
     "BudgetTracker",
+    "ChannelStatePort",
     "Clock",
     "Conversation",
     "ConversationAgent",
