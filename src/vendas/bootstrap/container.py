@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,9 +16,11 @@ from vendas.application.commands.process_cadence_step import ProcessCadenceStepC
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
 from vendas.bootstrap.settings import settings
 from vendas.domain.policies.cadence_policy import CadencePolicy
+from vendas.domain.policies.daily_cap_policy import DailyCapPolicy, DailyCapRepository
 from vendas.domain.policies.eligibility_policy import EligibilityPolicy
+from vendas.domain.policies.min_interval_policy import MinIntervalPolicy, MinIntervalRepository
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
-from vendas.domain.ports import BudgetTracker, Clock, JobQueue
+from vendas.domain.ports import BudgetTracker, ChannelStatePort, Clock, JobQueue
 from vendas.domain.ports import UnitOfWork as UowProtocol
 from vendas.domain.ports.auth import AuthPort
 from vendas.domain.ports.catalog import CatalogRepository
@@ -164,11 +167,53 @@ class Container:
         send_window_policy = SendWindowPolicy(self.clock)
         from vendas.domain.ports import UnitOfWork as ProcessUowProtocol
 
+        # Simple in-memory DailyCapRepository
+        class InMemoryDailyCapRepository(DailyCapRepository):
+            def __init__(self) -> None:
+                self._counts: dict[tuple[str, str], int] = {}  # (channel, date_iso) -> count
+
+            def count_today(self, channel: str, ref_date: date) -> int:
+                key = (channel, ref_date.isoformat())
+                return self._counts.get(key, 0)
+
+            def increment(self, channel: str, ref_date: date) -> None:
+                key = (channel, ref_date.isoformat())
+                self._counts[key] = self._counts.get(key, 0) + 1
+
+        # Simple in-memory MinIntervalRepository
+        class InMemoryMinIntervalRepository(MinIntervalRepository):
+            def __init__(self) -> None:
+                self._last_sent: dict[
+                    tuple[str, str], datetime
+                ] = {}  # (lead_id, channel) -> datetime
+
+            def get_last_sent_at(self, lead_id: str, channel: str) -> datetime | None:
+                return self._last_sent.get((lead_id, channel))
+
+            def set_last_sent_at(self, lead_id: str, channel: str, sent_at: datetime) -> None:
+                self._last_sent[(lead_id, channel)] = sent_at
+
+        # ChannelStatePort that always reports connected (can be replaced with real check)
+        class AlwaysConnectedChannelState(ChannelStatePort):
+            def is_connected(self, channel: str = "whatsapp") -> bool:
+                return True
+
+        daily_cap_repo = InMemoryDailyCapRepository()
+        min_interval_repo = InMemoryMinIntervalRepository()
+        daily_cap_policy = DailyCapPolicy(repository=daily_cap_repo, clock=self.clock)
+        min_interval_policy = MinIntervalPolicy(repository=min_interval_repo, clock=self.clock)
+        legal_basis_port = SQLAlchemyLegalBasisPort()
+        channel_state_port = AlwaysConnectedChannelState()
+
         return ProcessCadenceStepCommand(
             uow=cast(ProcessUowProtocol, self.uow),
             clock=self.clock,
             send_window_policy=send_window_policy,
             cadence_policy=self.cadence_policy,
+            legal_basis_port=legal_basis_port,
+            channel_state_port=channel_state_port,
+            daily_cap_policy=daily_cap_policy,
+            min_interval_policy=min_interval_policy,
         )
 
     def get_ingest_leads_command(self) -> IngestLeadsCommand:

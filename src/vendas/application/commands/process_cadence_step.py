@@ -1,28 +1,48 @@
-from typing import Any
+from __future__ import annotations
+
+from datetime import datetime, timedelta
 
 import structlog
 
 from vendas.domain.policies.cadence_policy import CadencePolicy
+from vendas.domain.policies.daily_cap_policy import DailyCapPolicy
+from vendas.domain.policies.min_interval_policy import MinIntervalPolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
-from vendas.domain.ports import UnitOfWork
+from vendas.domain.ports import ChannelStatePort, Clock, LegalBasisPort, UnitOfWork
 
 logger = structlog.get_logger()
 
 
 class ProcessCadenceStepCommand:
-    """Processa etapas de cadências vencidas de forma atômica (Outbox + Avanço de Passo)."""
+    """Processa etapas de cadências vencidas aplicando pipeline de 6 checagens antes de gravar na Outbox."""
 
     def __init__(
         self,
         uow: UnitOfWork,
-        clock: Any,
+        clock: Clock,
         send_window_policy: SendWindowPolicy,
         cadence_policy: CadencePolicy,
+        legal_basis_port: LegalBasisPort,
+        channel_state_port: ChannelStatePort,
+        daily_cap_policy: DailyCapPolicy,
+        min_interval_policy: MinIntervalPolicy,
     ) -> None:
         self._uow = uow
         self._clock = clock
         self._send_window_policy = send_window_policy
         self._cadence_policy = cadence_policy
+        self._legal_basis_port = legal_basis_port
+        self._channel_state_port = channel_state_port
+        self._daily_cap_policy = daily_cap_policy
+        self._min_interval_policy = min_interval_policy
+
+    def _next_business_day_08(self, dt: datetime) -> datetime:
+        """Retorna o próximo dia útil (seg-sex) às 08:00 no mesmo fuso de dt."""
+        next_day = dt + timedelta(days=1)
+        next_day = next_day.replace(hour=8, minute=0, second=0, microsecond=0)
+        while next_day.weekday() >= 5:
+            next_day += timedelta(days=1)
+        return next_day
 
     def execute(self, batch_size: int = 10) -> int:
         processed_count = 0
@@ -46,16 +66,12 @@ class ProcessCadenceStepCommand:
                     uow.enrollments.save(enrollment)
                     continue
 
-                # Valida política de horário comercial e fuso do lead
                 if lead.phone is None:
                     continue
-                phone_ddd = lead.phone.ddd
-                if not self._send_window_policy.is_allowed(phone_ddd, now):
-                    # Fora da janela: o worker ignora por ora e ele será pego depois
-                    continue
-
-                # BLOQUEIO MANDATÓRIO: Verifica lista de supressão antes de enfileirar
                 phone_e164 = str(lead.phone)
+                phone_ddd = lead.phone.ddd
+
+                # 1) Supressão
                 if (
                     hasattr(uow, "suppression")
                     and uow.suppression
@@ -70,6 +86,48 @@ class ProcessCadenceStepCommand:
                         enrollment_id=enrollment.id,
                         step=enrollment.current_step,
                     )
+                    continue
+
+                # 2) Base legal
+                if not self._legal_basis_port.has_legal_basis(str(lead.id), lead.phone):
+                    enrollment.cancel("sem_base_legal", at=now)
+                    uow.enrollments.save(enrollment)
+                    continue
+
+                # 3) Janela de envio
+                if not self._send_window_policy.is_allowed(phone_ddd, now):
+                    # Fora da janela: pula ciclo, mantém next_run_at inalterado
+                    continue
+
+                # 4) Teto diário
+                daily_cap_result = self._daily_cap_policy.check(
+                    channel="whatsapp", reference_time=now
+                )
+                if not daily_cap_result.allowed:
+                    # Reagenda para próximo dia útil 08:00
+                    next_run_at = self._next_business_day_08(now)
+                    enrollment.next_run_at = next_run_at
+                    enrollment.updated_at = now
+                    uow.enrollments.save(enrollment)
+                    continue
+
+                # 5) Intervalo mínimo
+                min_interval_result = self._min_interval_policy.check(
+                    lead_id=str(lead.id), channel="whatsapp", reference_time=now
+                )
+                if not min_interval_result.allowed:
+                    next_run_at = min_interval_result.next_allowed_at or now
+                    enrollment.next_run_at = next_run_at
+                    enrollment.updated_at = now
+                    uow.enrollments.save(enrollment)
+                    continue
+
+                # 6) Estado do canal
+                if not self._channel_state_port.is_connected("whatsapp"):
+                    next_run_at = now + timedelta(minutes=5)
+                    enrollment.next_run_at = next_run_at
+                    enrollment.updated_at = now
+                    uow.enrollments.save(enrollment)
                     continue
 
                 # Prepara o payload da mensagem baseada no passo atual

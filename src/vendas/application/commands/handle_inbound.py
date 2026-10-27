@@ -6,7 +6,7 @@ import structlog
 
 from vendas.domain.entities.suppression_record import SuppressionReason
 from vendas.domain.policies.opt_out_policy import OptOutPolicy
-from vendas.domain.ports import AgentContext, ConversationAgent, ConversationLock
+from vendas.domain.ports import AgentContext, Clock, ConversationAgent, ConversationLock, Message
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
 from vendas.domain.ports.uow import UnitOfWork
 from vendas.domain.value_objects.phone import Phone
@@ -22,7 +22,7 @@ class HandleInboundCommand:
         uow: UnitOfWork,
         agent: ConversationAgent,
         knowledge_base: KnowledgeBasePort,
-        clock: Any,
+        clock: Clock,
         conversation_lock_factory: Callable[[Any], ConversationLock],
     ) -> None:
         self._uow = uow
@@ -94,7 +94,7 @@ class HandleInboundCommand:
 
                 # 5. Monta o contexto para o Agente de IA
                 # Histórico vazio por simplicidade; pode ser preenchido futuramente
-                history: Sequence[Any] = ()
+                history: Sequence[Message] = ()
 
                 # Busca base de conhecimento (preview) para injetar no contexto
                 kb_preview = self._knowledge_base.preview(message_text, at=at)

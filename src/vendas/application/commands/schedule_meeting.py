@@ -1,12 +1,11 @@
 from datetime import datetime
-from typing import Any
 
-from vendas.domain.ports import UnitOfWork
+from vendas.domain.ports import Clock, UnitOfWork
 from vendas.domain.ports.notifier import NotifierPort
 
 
 class ScheduleMeetingCommand:
-    def __init__(self, uow: UnitOfWork, notifier: NotifierPort, clock: Any) -> None:
+    def __init__(self, uow: UnitOfWork, notifier: NotifierPort, clock: Clock) -> None:
         self._uow = uow
         self._notifier = notifier
         self._clock = clock

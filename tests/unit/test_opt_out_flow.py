@@ -10,9 +10,45 @@ from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, Enrollm
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.entities.suppression_record import SuppressionReason, SuppressionRecord
 from vendas.domain.policies.cadence_policy import CadencePolicy
+from vendas.domain.policies.daily_cap_policy import DailyCapResult
+from vendas.domain.policies.min_interval_policy import MinIntervalResult
 from vendas.domain.policies.opt_out_policy import OptOutPolicy
 from vendas.domain.policies.send_window_policy import SendWindowPolicy
 from vendas.domain.value_objects import Phone
+
+
+# ---- Fakes para os ports exigidos por ProcessCadenceStepCommand ----
+class FakeLegalBasisPort:
+    def has_legal_basis(self, lead_id: str, phone) -> bool:
+        return True
+
+
+class FakeChannelStatePort:
+    def is_connected(self, channel: str = "whatsapp") -> bool:
+        return True
+
+
+class FakeDailyCapPolicy:
+    def check(self, channel: str = "whatsapp", reference_time=None) -> DailyCapResult:
+        return DailyCapResult(
+            allowed=True,
+            current_count=0,
+            cap=1000,
+            channel=channel,
+            ref_date=reference_time.date() if reference_time else datetime.now().date(),
+        )
+
+
+class FakeMinIntervalPolicy:
+    def check(
+        self, lead_id: str, channel: str = "whatsapp", reference_time=None
+    ) -> MinIntervalResult:
+        return MinIntervalResult(
+            allowed=True,
+            last_sent_at=None,
+            min_interval=timedelta(seconds=60),
+            next_allowed_at=None,
+        )
 
 
 class FakeSuppressionRepository:
@@ -201,6 +237,10 @@ class TestOptOutFlow:
             clock=self.clock,
             send_window_policy=send_window_policy,
             cadence_policy=cadence_policy,
+            legal_basis_port=FakeLegalBasisPort(),
+            channel_state_port=FakeChannelStatePort(),
+            daily_cap_policy=FakeDailyCapPolicy(),
+            min_interval_policy=FakeMinIntervalPolicy(),
         )
 
         # Act
@@ -231,6 +271,10 @@ class TestOptOutFlow:
             clock=self.clock,
             send_window_policy=send_window_policy,
             cadence_policy=cadence_policy,
+            legal_basis_port=FakeLegalBasisPort(),
+            channel_state_port=FakeChannelStatePort(),
+            daily_cap_policy=FakeDailyCapPolicy(),
+            min_interval_policy=FakeMinIntervalPolicy(),
         )
 
         # Act
