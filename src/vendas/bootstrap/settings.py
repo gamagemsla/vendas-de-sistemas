@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     EVOLUTION_API_URL: str = "http://localhost:8080"
     EVOLUTION_API_KEY: str = ""
 
+    # Configurações de E-mail (SMTP)
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
+    EMAIL_FROM: str = "noreply@vendas.local"
+    UNSUBSCRIBE_BASE_URL: str = "http://localhost:8000/unsubscribe"
+
     # Autenticação da API (tokens de desenvolvimento; sobrescrever em produção via .env)
     API_ADMIN_TOKEN: str = "dev-admin-token"
     API_OPERATOR_TOKEN: str = "dev-operator-token"

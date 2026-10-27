@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -70,6 +70,48 @@ class SendCadenceMessagePayload(BaseModel):
         return v
 
 
+class SendCadenceEmailPayload(BaseModel):
+    """Payload para evento SEND_CADENCE_EMAIL."""
+
+    to_email: str = Field(..., description="E-mail do destinatário")
+    subject: str = Field(..., min_length=1, description="Assunto do e-mail")
+    html_content: str = Field(..., min_length=1, description="Conteúdo HTML do e-mail")
+    text_content: str | None = Field(None, description="Conteúdo texto plano (opcional)")
+    unsubscribe_link: str = Field(..., description="Link de descadastro")
+    channel: Literal["email"] = "email"
+
+    @field_validator("to_email")
+    @classmethod
+    def _email_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("to_email não pode ser vazio")
+        # Validação básica de e-mail
+        if "@" not in v:
+            raise ValueError("to_email deve ser um e-mail válido")
+        return v
+
+    @field_validator("subject")
+    @classmethod
+    def _subject_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("subject não pode ser vazio")
+        return v
+
+    @field_validator("html_content")
+    @classmethod
+    def _html_content_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("html_content não pode ser vazio")
+        return v
+
+    @field_validator("unsubscribe_link")
+    @classmethod
+    def _unsubscribe_link_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("unsubscribe_link não pode ser vazio")
+        return v
+
+
 class OperatorTakeoverPayload(BaseModel):
     """Payload para evento OPERATOR_TAKEOVER_MESSAGE."""
 
@@ -97,6 +139,7 @@ class OperatorTakeoverPayload(BaseModel):
 _PAYLOAD_SCHEMAS: dict[str, type[BaseModel]] = {
     "SEND_AI_RESPONSE": SendAiResponsePayload,
     "SEND_CADENCE_MESSAGE": SendCadenceMessagePayload,
+    "SEND_CADENCE_EMAIL": SendCadenceEmailPayload,
     "OPERATOR_TAKEOVER_MESSAGE": OperatorTakeoverPayload,
 }
 
