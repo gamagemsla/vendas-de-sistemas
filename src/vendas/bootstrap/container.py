@@ -13,6 +13,11 @@ from vendas.application.commands.enrich_lead import EnrichLeadCommand
 from vendas.application.commands.enroll_in_cadence import EnrollInCadenceCommand
 from vendas.application.commands.handle_inbound import HandleInboundCommand
 from vendas.application.commands.ingest_leads import IngestLeadsCommand
+from vendas.application.commands.lead_data_subject import (
+    AnonymizeLeadDataHandler,
+    DeleteLeadDataHandler,
+    ExportLeadDataHandler,
+)
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.application.queries.budget import GetDailyCostsQuery
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
@@ -282,6 +287,37 @@ class Container:
             clock=self.clock,
             conversation_lock_factory=self.conversation_lock_factory,
         )
+
+    # --- LGPD handlers -------------------------------------------------------
+
+    def get_export_lead_data_handler(self) -> ExportLeadDataHandler:
+        from vendas.infrastructure.persistence.lead_data_subject import (
+            SQLAlchemyLeadDataSubjectAdapter,
+        )
+
+        session = self.session_factory()
+        port = SQLAlchemyLeadDataSubjectAdapter(session)
+        return ExportLeadDataHandler(port)
+
+    def get_anonymize_lead_data_handler(self) -> AnonymizeLeadDataHandler:
+        from vendas.domain.ports.uow import UnitOfWork as UowProtocolForLGPD
+        from vendas.infrastructure.persistence.lead_data_subject import (
+            SQLAlchemyLeadDataSubjectAdapter,
+        )
+
+        session = self.session_factory()
+        port = SQLAlchemyLeadDataSubjectAdapter(session)
+        return AnonymizeLeadDataHandler(port, cast(UowProtocolForLGPD, self.uow))
+
+    def get_delete_lead_data_handler(self) -> DeleteLeadDataHandler:
+        from vendas.domain.ports.uow import UnitOfWork as UowProtocolForLGPD
+        from vendas.infrastructure.persistence.lead_data_subject import (
+            SQLAlchemyLeadDataSubjectAdapter,
+        )
+
+        session = self.session_factory()
+        port = SQLAlchemyLeadDataSubjectAdapter(session)
+        return DeleteLeadDataHandler(port, cast(UowProtocolForLGPD, self.uow))
 
     # --- query helpers -------------------------------------------------------
 

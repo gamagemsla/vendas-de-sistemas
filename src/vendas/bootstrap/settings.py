@@ -1,5 +1,7 @@
 import os
+from typing import Annotated
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,6 +62,13 @@ class Settings(BaseSettings):
 
     # Segredo compartilhado para validação de assinatura do webhook (HMAC)
     WEBHOOK_SECRET: str = ""
+
+    # Configurações de Segurança (CORS e Rate Limiting)
+    CORS_ALLOW_ORIGINS: Annotated[
+        list[str], Field(default_factory=lambda: ["http://localhost:8501"])
+    ]
+    RATE_LIMIT_MAX_CALLS: int = 100
+    RATE_LIMIT_PERIOD_SECONDS: int = 60
 
 
 def get_settings() -> Settings:
