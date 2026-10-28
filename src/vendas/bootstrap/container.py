@@ -37,15 +37,8 @@ from vendas.infrastructure.channels.evolution_whatsapp import EvolutionWhatsAppC
 from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
 from vendas.infrastructure.llm.gemini import GeminiConversationAgent
-from vendas.infrastructure.persistence.budget_queries import SqlAlchemyBudgetQuery
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 from vendas.infrastructure.persistence.channel_state import SQLAlchemyChannelStatePort
-from vendas.infrastructure.persistence.conversation_query_factory import (
-    SessionFactoryConversationQuery,
-)
-from vendas.infrastructure.persistence.dashboard_queries import SqlAlchemyDashboardQuery
-from vendas.infrastructure.persistence.dashboard_query_factory import SessionFactoryDashboardQuery
-from vendas.infrastructure.persistence.lead_query_factory import SessionFactoryLeadQuery
 from vendas.infrastructure.persistence.legal_basis import SQLAlchemyLegalBasisPort
 from vendas.infrastructure.persistence.orm_models import (
     CatalogItemModel,
@@ -53,8 +46,15 @@ from vendas.infrastructure.persistence.orm_models import (
     ConversationState,
     LeadModel,
 )
-from vendas.infrastructure.persistence.outbox_query_factory import SessionFactoryOutboxQuery
 from vendas.infrastructure.persistence.pg_conversation_lock import PgAdvisoryConversationLock
+from vendas.infrastructure.persistence.queries import (
+    SessionFactoryConversationQuery,
+    SessionFactoryDashboardQuery,
+    SessionFactoryLeadQuery,
+    SessionFactoryOutboxQuery,
+    SqlAlchemyBudgetQuery,
+    SqlAlchemyDashboardQuery,
+)
 from vendas.infrastructure.persistence.suppression_port import SQLAlchemySuppressionPort
 from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
 from vendas.infrastructure.providers.apify import ApifyLeadSource

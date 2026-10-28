@@ -80,6 +80,8 @@ def test_worker_ingest_and_enrich_cycles(monkeypatch):
     worker._ingest_cmd = fake_ingest
     worker._enrich_cmd = fake_enrich
     worker._job_queue = fake_queue
+    # Evita que o ciclo de inbound consuma o job de enriquecimento
+    worker._run_inbound_cycle = lambda: 0
 
     # Executa o loop por alguns segundos e depois sinaliza shutdown
     def stop_after():
