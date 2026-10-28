@@ -14,7 +14,10 @@ from vendas.application.commands.enroll_in_cadence import EnrollInCadenceCommand
 from vendas.application.commands.handle_inbound import HandleInboundCommand
 from vendas.application.commands.ingest_leads import IngestLeadsCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
+from vendas.application.queries.budget import GetDailyCostsQuery
 from vendas.application.queries.catalog import CatalogPreviewQuery, ListCatalogServicesQuery
+from vendas.application.queries.lead import CountLeadsByStatusQuery, ListLeadsQuery
+from vendas.application.queries.outbox import CountOutboxByStatusQuery, ListOutboxQueueQuery
 from vendas.bootstrap.settings import settings
 from vendas.domain.policies.cadence_policy import CadencePolicy
 from vendas.domain.policies.daily_cap_policy import DailyCapPolicy, DailyCapRepository
@@ -34,6 +37,7 @@ from vendas.infrastructure.channels.evolution_whatsapp import EvolutionWhatsAppC
 from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.knowledge_base import SqlAlchemyKnowledgeBase
 from vendas.infrastructure.llm.gemini import GeminiConversationAgent
+from vendas.infrastructure.persistence.budget_queries import SqlAlchemyBudgetQuery
 from vendas.infrastructure.persistence.catalog_repository import SqlAlchemyCatalogRepository
 from vendas.infrastructure.persistence.channel_state import SQLAlchemyChannelStatePort
 from vendas.infrastructure.persistence.conversation_query_factory import (
@@ -41,6 +45,7 @@ from vendas.infrastructure.persistence.conversation_query_factory import (
 )
 from vendas.infrastructure.persistence.dashboard_queries import SqlAlchemyDashboardQuery
 from vendas.infrastructure.persistence.dashboard_query_factory import SessionFactoryDashboardQuery
+from vendas.infrastructure.persistence.lead_query_factory import SessionFactoryLeadQuery
 from vendas.infrastructure.persistence.legal_basis import SQLAlchemyLegalBasisPort
 from vendas.infrastructure.persistence.orm_models import (
     CatalogItemModel,
@@ -48,6 +53,7 @@ from vendas.infrastructure.persistence.orm_models import (
     ConversationState,
     LeadModel,
 )
+from vendas.infrastructure.persistence.outbox_query_factory import SessionFactoryOutboxQuery
 from vendas.infrastructure.persistence.pg_conversation_lock import PgAdvisoryConversationLock
 from vendas.infrastructure.persistence.suppression_port import SQLAlchemySuppressionPort
 from vendas.infrastructure.persistence.unit_of_work import SQLAlchemyUnitOfWork
@@ -270,7 +276,7 @@ class Container:
 
     def get_handle_inbound_command(self) -> HandleInboundCommand:
         return HandleInboundCommand(
-            uow=cast(UowProtocol, self.uow),
+            uow=cast(UowProtocolForDispatcher, self.uow),
             agent=self.get_gemini_agent(),
             knowledge_base=self.knowledge_base,
             clock=self.clock,
@@ -304,6 +310,28 @@ class Container:
 
     def get_knowledge_base(self, session: Session) -> KnowledgeBasePort:
         return cast(KnowledgeBasePort, SqlAlchemyKnowledgeBase(session))
+
+    # --- new query helpers -------------------------------------------------------
+    def get_list_leads_query(self) -> ListLeadsQuery:
+        return ListLeadsQuery(SessionFactoryLeadQuery(self.session_factory))
+
+    def get_count_leads_by_status_query(self) -> CountLeadsByStatusQuery:
+        return CountLeadsByStatusQuery(SessionFactoryLeadQuery(self.session_factory))
+
+    def get_outbox_queue_query(self) -> ListOutboxQueueQuery:
+        return ListOutboxQueueQuery(SessionFactoryOutboxQuery(self.session_factory))
+
+    def get_count_outbox_by_status_query(self) -> CountOutboxByStatusQuery:
+        return CountOutboxByStatusQuery(SessionFactoryOutboxQuery(self.session_factory))
+
+    def get_daily_costs_query(self) -> GetDailyCostsQuery:
+        return GetDailyCostsQuery(
+            SqlAlchemyBudgetQuery(
+                apify_tracker=self.apify_budget_tracker,
+                firecrawl_tracker=self.firecrawl_budget_tracker,
+                gemini_tracker=self.gemini_budget_tracker,
+            )
+        )
 
 
 container = Container()

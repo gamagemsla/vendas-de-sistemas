@@ -9,8 +9,10 @@ from vendas.bootstrap.container import container
 from vendas.bootstrap.logging import clear_correlation_id, set_correlation_id
 from vendas.bootstrap.settings import settings
 from vendas.domain.ports.auth import AuthPort
+from vendas.interfaces.api.deps import get_channel_state_port, get_clock, get_job_queue, get_uow
 from vendas.interfaces.api.routes.catalog import router as catalog_router
 from vendas.interfaces.api.routes.health import router as health_router
+from vendas.interfaces.api.webhooks.whatsapp import router as whatsapp_webhook_router
 
 logger = structlog.get_logger()
 
@@ -68,10 +70,17 @@ def create_app(auth_port: AuthPort | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(catalog_router)
+    app.include_router(whatsapp_webhook_router)
 
     # Vincula porta de autenticação ao state da aplicação, se fornecida
     if auth_port is not None:
         app.state.auth_port = auth_port
+
+    # Override webhook dependencies with concrete implementations from container
+    app.dependency_overrides[get_uow] = lambda: container.uow
+    app.dependency_overrides[get_job_queue] = lambda: container.job_queue
+    app.dependency_overrides[get_clock] = lambda: container.clock
+    app.dependency_overrides[get_channel_state_port] = lambda: container.channel_state_port
 
     return app
 

@@ -69,3 +69,8 @@ class FileBudgetTracker(BudgetTracker):
         budget = self._load_budget()
         used = budget.get(day_key, 0)
         return max(self._daily_limit - used, 0)
+
+    def used_today(self) -> int:
+        day_key = self._current_day_key()
+        budget = self._load_budget()
+        return budget.get(day_key, 0)

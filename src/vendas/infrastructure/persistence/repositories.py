@@ -526,6 +526,15 @@ class SQLAlchemyOutboxRepository:
         )
         return result
 
+    def exists_by_provider_message_id(self, provider_message_id: str) -> bool:
+        """Verifica se existe mensagem na outbox com o provider_message_id informado."""
+        return (
+            self._session.query(OutboxModel)
+            .filter_by(provider_message_id=provider_message_id)
+            .first()
+            is not None
+        )
+
 
 class SQLAlchemyBookingRepository:
     """Repositório de Bookings com SQLAlchemy."""
@@ -604,6 +613,22 @@ class SQLAlchemyEnrollmentRepository:
         )
         return [e for m in models if (e := CadenceEnrollmentMapper.to_domain(m)) is not None]
 
+    def claim_due(self, now: datetime, batch_size: int = 10) -> list[CadenceEnrollment]:
+        """Seleciona matrículas vencidas (ACTIVE) para processamento com SKIP LOCKED."""
+        models = (
+            self._session.query(CadenceEnrollmentModel)
+            .filter(
+                CadenceEnrollmentModel.status == EnrollmentStatus.ACTIVE,
+                CadenceEnrollmentModel.next_run_at.isnot(None),
+                CadenceEnrollmentModel.next_run_at <= now,
+            )
+            .order_by(CadenceEnrollmentModel.next_run_at.asc())
+            .with_for_update(skip_locked=True)
+            .limit(batch_size)
+            .all()
+        )
+        return [e for m in models if (e := CadenceEnrollmentMapper.to_domain(m)) is not None]
+
 
 class SQLAlchemyInboundEventRepository:
     """Repositório de InboundEvent com SQLAlchemy."""
@@ -645,6 +670,10 @@ class SQLAlchemyInboundEventRepository:
             .first()
             is not None
         )
+
+    def exists(self, provider_event_id: str) -> bool:
+        """Verifica existência usando provider_name fixo 'evolution'."""
+        return self.exists_by_provider_id("evolution", provider_event_id)
 
 
 class SQLAlchemySuppressionRepository:

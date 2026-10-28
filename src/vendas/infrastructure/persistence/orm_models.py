@@ -49,6 +49,7 @@ class ConversationState(str, enum.Enum):
     WAITING_REPLY = "WAITING_REPLY"
     CLOSED = "CLOSED"
     HANDOFF = "HANDOFF"
+    TAKEOVER = "TAKEOVER"
 
 
 class MessageDirection(str, enum.Enum):
@@ -863,6 +864,25 @@ class Booking(Base):
         return f"Booking(id={self.id}, lead_id={self.lead_id}, scheduled_at={self.scheduled_at}, status={self.status})"
 
 
+class ChannelState(Base):
+    __tablename__ = "channel_states"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    channel: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    connected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    qr_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"ChannelState(channel={self.channel}, connected={self.connected}, qr_code={'set' if self.qr_code else 'none'})"
+
+
 # --- Aliases de compatibilidade para Mypy e Repositórios ---
 LeadModel = Lead
 CompanyModel = Company
@@ -884,3 +904,4 @@ CatalogServiceModel = CatalogService
 CatalogPriceModel = CatalogPrice
 FaqEntryModel = FaqEntry
 BookingModel = Booking
+ChannelStateModel = ChannelState

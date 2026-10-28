@@ -1,6 +1,7 @@
 from types import TracebackType
 from typing import Any, Protocol, Self
 
+from vendas.domain.ports import EnrollmentRepository
 from vendas.domain.ports.catalog import CatalogRepository
 
 
@@ -8,7 +9,7 @@ class UnitOfWork(Protocol):
     leads: Any
     conversations: Any
     outbox: Any
-    enrollments: Any
+    enrollments: EnrollmentRepository
     bookings: Any
     inbound_events: Any
     suppression: Any

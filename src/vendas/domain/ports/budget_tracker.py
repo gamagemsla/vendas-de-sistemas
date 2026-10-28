@@ -18,3 +18,7 @@ class BudgetTracker(Protocol):
     def remaining(self) -> int:
         """Retorna unidades restantes no dia corrente."""
         ...
+
+    def used_today(self) -> int:
+        """Retorna unidades já consumidas no dia corrente."""
+        ...

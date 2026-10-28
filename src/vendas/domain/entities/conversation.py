@@ -15,6 +15,7 @@ class ConversationState(str, Enum):
     WAITING_REPLY = "WAITING_REPLY"
     CLOSED = "CLOSED"
     HANDOFF = "HANDOFF"
+    TAKEOVER = "TAKEOVER"
 
 
 @dataclass(slots=True)
@@ -163,14 +164,21 @@ class Conversation:
         self.updated_at = at
 
     def is_under_human_takeover(self) -> bool:
-        """Verifica se está sob takeover humano (estado HANDOFF)."""
-        return self.state == ConversationState.HANDOFF
+        """Verifica se está sob takeover humano (estado HANDOFF ou TAKEOVER)."""
+        return self.state in (ConversationState.HANDOFF, ConversationState.TAKEOVER)
 
     def trigger_handoff(self, at: datetime | None = None) -> None:
         """Marca para handoff humano."""
         if at is None:
             raise ValueError("Timestamp 'at' é obrigatório para trigger_handoff")
         self.state = ConversationState.HANDOFF
+        self.updated_at = at
+
+    def trigger_takeover(self, at: datetime | None = None) -> None:
+        """Marca a conversa como assumida por humano (takeover)."""
+        if at is None:
+            raise ValueError("Timestamp 'at' é obrigatório para trigger_takeover")
+        self.state = ConversationState.TAKEOVER
         self.updated_at = at
 
     def close(self, at: datetime | None = None) -> None:

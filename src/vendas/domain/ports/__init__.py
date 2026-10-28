@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, Self, TypeVar
 from uuid import UUID
 
+from vendas.domain.entities.cadence_enrollment import CadenceEnrollment
+from vendas.domain.entities.conversation import Conversation
 from vendas.domain.entities.lead import Lead, LeadStatus
 from vendas.domain.events import DomainEvent
 from vendas.domain.value_objects import Cnpj, Email, Money, Phone
@@ -122,38 +124,6 @@ class LeadRepository(Repository[Lead], Protocol):
 # =============================================================================
 # Conversation Repository Port
 # =============================================================================
-
-
-@dataclass(slots=True)
-class Conversation:
-    """Entidade de conversa (simplificada para o port)."""
-
-    id: UUID
-    lead_id: UUID
-    channel: str  # "whatsapp" | "email"
-    contact_phone: str
-    contact_email: str | None
-    state: str  # "open" | "closed" | "handoff"
-    current_step: int
-    last_message_at: datetime | None
-    created_at: datetime
-    updated_at: datetime
-
-    def is_under_human_takeover(self) -> bool:
-        """Verifica se a conversa está sob takeover humano (estado handoff)."""
-        return self.state == "handoff"
-
-    def add_message(self, sender: str, text: str, timestamp: datetime) -> None:
-        """Adiciona uma mensagem à conversa (atualiza last_message_at)."""
-        self.last_message_at = timestamp
-        self.updated_at = timestamp
-
-    def trigger_handoff(self, reason: str, at: datetime | None = None) -> None:
-        """Marca a conversa para handoff humano."""
-        if at is None:
-            raise ValueError("Timestamp 'at' é obrigatório para trigger_handoff")
-        self.state = "handoff"
-        self.updated_at = at
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,6 +289,10 @@ class OutboxRepository(Repository[OutboxMessage], Protocol):
 
     def cleanup_old(self, older_than: datetime, statuses: Sequence[str]) -> int:
         """Remove mensagens antigas com status finalizados. Retorna quantidade removida."""
+        ...
+
+    def exists_by_provider_message_id(self, provider_message_id: str) -> bool:
+        """Verifica se existe mensagem na outbox com o provider_message_id informado."""
         ...
 
 
@@ -610,6 +584,35 @@ class JobQueue(Protocol):
 
 
 # =============================================================================
+# Enrollment Repository Port
+# =============================================================================
+
+
+class EnrollmentRepository(Protocol):
+    """Port para persistência de CadenceEnrollment."""
+
+    def get(self, enrollment_id: EntityId) -> CadenceEnrollment | None:
+        """Busca matrícula por ID."""
+        ...
+
+    def get_by_lead(self, lead_id: EntityId) -> CadenceEnrollment | None:
+        """Busca matrícula ativa/pausada por lead."""
+        ...
+
+    def add(self, enrollment: CadenceEnrollment) -> None:
+        """Adiciona nova matrícula."""
+        ...
+
+    def save(self, enrollment: CadenceEnrollment) -> None:
+        """Atualiza matrícula existente."""
+        ...
+
+    def claim_due(self, now: datetime, batch_size: int = 10) -> list[CadenceEnrollment]:
+        """Seleciona matrículas vencidas (status ACTIVE) para processamento com SKIP LOCKED."""
+        ...
+
+
+# =============================================================================
 # Unit of Work Port
 # =============================================================================
 
@@ -621,7 +624,7 @@ class UnitOfWork(Protocol):
     leads: LeadRepository
     conversations: ConversationRepository
     outbox: OutboxRepository
-    enrollments: Any
+    enrollments: EnrollmentRepository
     bookings: Any
     inbound_events: Any
     suppression: Any
@@ -690,22 +693,36 @@ class ChannelStatePort(Protocol):
         """Retorna True se o canal está conectado e pronto para envio."""
         ...
 
+    def set_connection_state(
+        self, channel: str, connected: bool, reason: str | None = None
+    ) -> None:
+        """Atualiza o estado de conexão do canal."""
+        ...
+
+    def set_qr_pending(self, channel: str, qr_code: str | None = None) -> None:
+        """Marca que há um QR Code pendente para o canal."""
+        ...
+
 
 # =============================================================================
 # Conversation Lock Port
 # =============================================================================
 
+from .budget import BudgetQueryPort
 from .conversation_lock import ConversationLock
 
 # =============================================================================
 # Exports
 # =============================================================================
+from .lead import LeadQueryPort
+from .outbox import OutboxQueryPort
 
 __all__ = [
     "AgentContext",
     "AgentDecision",
     "AuthContext",
     "AuthPort",
+    "BudgetQueryPort",
     "BudgetTracker",
     "ChannelStatePort",
     "Clock",
@@ -721,6 +738,7 @@ __all__ = [
     "JobResult",
     "LeadEnricher",
     "LeadFilter",
+    "LeadQueryPort",
     "LeadRepository",
     "LeadSource",
     "LeadSourceConfig",
@@ -730,6 +748,7 @@ __all__ = [
     "Money",
     "OutboxFilter",
     "OutboxMessage",
+    "OutboxQueryPort",
     "OutboxRepository",
     "RawLead",
     "Repository",

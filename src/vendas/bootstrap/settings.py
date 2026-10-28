@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     DRY_RUN: bool = True
     AUTOMATION_ENABLED: bool = False
     KILL_SWITCH: bool = False
+    CADENCE_GLOBAL_PAUSE: bool = False
 
     # Worker agendamento
     WORKER_POLL_INTERVAL_SECONDS: int = 60
@@ -56,6 +57,9 @@ class Settings(BaseSettings):
     # Autenticação da API (tokens de desenvolvimento; sobrescrever em produção via .env)
     API_ADMIN_TOKEN: str = "dev-admin-token"
     API_OPERATOR_TOKEN: str = "dev-operator-token"
+
+    # Segredo compartilhado para validação de assinatura do webhook (HMAC)
+    WEBHOOK_SECRET: str = ""
 
 
 def get_settings() -> Settings:

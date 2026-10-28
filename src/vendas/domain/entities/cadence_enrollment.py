@@ -89,7 +89,7 @@ class CadenceEnrollment:
         self.next_run_at = next_run_at
         self.updated_at = at
 
-    def pause(self, at: datetime | None = None) -> None:
+    def pause(self, reason: str | None = None, at: datetime | None = None) -> None:
         """Pausa a cadência."""
         if self.status == EnrollmentStatus.PAUSED:
             return
@@ -97,6 +97,7 @@ class CadenceEnrollment:
             raise ValueError("Timestamp 'at' é obrigatório para pause")
         self.status = EnrollmentStatus.PAUSED
         self.updated_at = at
+        # reason could be stored in a new field if needed; currently not persisted
 
     def resume(self, at: datetime | None = None) -> None:
         """Retoma cadência pausada."""
