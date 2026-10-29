@@ -455,18 +455,22 @@ class SQLAlchemyOutboxRepository:
         updated_model = OutboxMapper.to_orm(entity)
         if updated_model:
             self._session.merge(updated_model)
-        # Registra recibo de entrega
-        receipt = MessageEventModel(
-            message_id=entity.id,
-            event_type="DELIVERED",
-            provider_event_id=external_id,
-            provider_name=entity.channel,
-            payload=entity.payload,
-            processed=True,
-            created_at=now,
-            idempotency_key=entity.idempotency_key,
+        # Registra recibo de entrega apenas se existir mensagem correspondente na tabela messages
+        has_message = (
+            self._session.query(MessageModel).filter_by(id=entity.id).first() is not None
         )
-        self._session.add(receipt)
+        if has_message:
+            receipt = MessageEventModel(
+                message_id=entity.id,
+                event_type="DELIVERED",
+                provider_event_id=external_id,
+                provider_name=entity.channel,
+                payload=entity.payload,
+                processed=True,
+                created_at=now,
+                idempotency_key=entity.idempotency_key,
+            )
+            self._session.add(receipt)
 
     def mark_failed(
         self,
@@ -490,17 +494,22 @@ class SQLAlchemyOutboxRepository:
         event_type = "FAILED"
         if entity.status == DomainOutboxStatus.DEAD_LETTER:
             event_type = "DEAD_LETTER"
-        receipt = MessageEventModel(
-            message_id=entity.id,
-            event_type=event_type,
-            provider_event_id=None,
-            provider_name=entity.channel,
-            payload=entity.payload,
-            processed=True,
-            created_at=now,
-            idempotency_key=entity.idempotency_key,
+        # Registra evento apenas se existir mensagem correspondente na tabela messages
+        has_message = (
+            self._session.query(MessageModel).filter_by(id=entity.id).first() is not None
         )
-        self._session.add(receipt)
+        if has_message:
+            receipt = MessageEventModel(
+                message_id=entity.id,
+                event_type=event_type,
+                provider_event_id=None,
+                provider_name=entity.channel,
+                payload=entity.payload,
+                processed=True,
+                created_at=now,
+                idempotency_key=entity.idempotency_key,
+            )
+            self._session.add(receipt)
 
     def get_dead_letters(self, limit: int = 100) -> list[OutboxMessage]:
         """Busca mensagens em dead letter."""
