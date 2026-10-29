@@ -88,103 +88,106 @@ async def receive_whatsapp_webhook(
     if event_type != "MESSAGES-upsert":
         return {"status": "ignored", "reason": "event_type_not_handled"}
 
-    data = payload.get("data", {})
-    message_id = data.get("key", {}).get("id")
-    remote_jid = data.get("key", {}).get("remoteJid")
-    from_me = data.get("key", {}).get("fromMe", False)
+    with uow:
+        data = payload.get("data", {})
+        message_id = data.get("key", {}).get("id")
+        remote_jid = data.get("key", {}).get("remoteJid")
+        from_me = data.get("key", {}).get("fromMe", False)
 
-    # Filtra mensagens de grupos (remoteJid termina com @g.us)
-    if remote_jid and remote_jid.endswith("@g.us"):
-        logger.info("webhook_ignorado_grupo", remote_jid=remote_jid)
-        return {"status": "ignored", "reason": "group_message"}
+        # Filtra mensagens de grupos (remoteJid termina com @g.us)
+        if remote_jid and remote_jid.endswith("@g.us"):
+            logger.info("webhook_ignorado_grupo", remote_jid=remote_jid)
+            return {"status": "ignored", "reason": "group_message"}
 
-    # Normaliza telefone via Phone VO (suporta JID)
-    from vendas.domain.value_objects.phone import Phone
+        # Normaliza telefone via Phone VO (suporta JID)
+        from vendas.domain.value_objects.phone import Phone
 
-    phone_vo = Phone(remote_jid) if remote_jid else None
-    sender_phone = str(phone_vo) if phone_vo else None
+        phone_vo = Phone(remote_jid) if remote_jid else None
+        sender_phone = str(phone_vo) if phone_vo else None
 
-    # Se a mensagem foi enviada por nós mesmos (fromMe), verifica se é echo do bot
-    if from_me:
-        # Verifica se o message_id existe na outbox (nossa mensagem enviada)
-        if (
-            hasattr(uow, "outbox")
-            and uow.outbox
-            and uow.outbox.exists_by_provider_message_id(message_id)
-        ):
-            logger.info("echo_bot_detectado", message_id=message_id)
-            return {"status": "acknowledged", "type": "outbound_echo"}
-        # Caso contrário, é takeover humano
-        logger.warning("takeover_humano_detectado", message_id=message_id, remote_jid=remote_jid)
-        if phone_vo:
-            lead = uow.leads.find_by_dedupe_key(cnpj=None, phone=phone_vo)
-            if lead:
-                # Busca ou cria conversa
-                conversation: Conversation | None = uow.conversations.get_by_lead_id(lead.id)
-                if conversation is None:
-                    # Cria conversa se não existir
-                    conversation = Conversation.create(
-                        lead_id=lead.id,
-                        channel="whatsapp",
-                        contact_phone=remote_jid,
-                        at=clock.now(),
+        # Se a mensagem foi enviada por nós mesmos (fromMe), verifica se é echo do bot
+        if from_me:
+            # Verifica se o message_id existe na outbox (nossa mensagem enviada)
+            if (
+                hasattr(uow, "outbox")
+                and uow.outbox
+                and uow.outbox.exists_by_provider_message_id(message_id)
+            ):
+                logger.info("echo_bot_detectado", message_id=message_id)
+                return {"status": "acknowledged", "type": "outbound_echo"}
+            # Caso contrário, é takeover humano
+            logger.warning(
+                "takeover_humano_detectado", message_id=message_id, remote_jid=remote_jid
+            )
+            if phone_vo:
+                lead = uow.leads.find_by_dedupe_key(cnpj=None, phone=phone_vo)
+                if lead:
+                    # Busca ou cria conversa
+                    conversation: Conversation | None = uow.conversations.get_by_lead_id(lead.id)
+                    if conversation is None:
+                        # Cria conversa se não existir
+                        conversation = Conversation.create(
+                            lead_id=lead.id,
+                            channel="whatsapp",
+                            contact_phone=remote_jid,
+                            at=clock.now(),
+                        )
+                        uow.conversations.add(conversation)
+                    # Marca takeover
+                    conversation.trigger_takeover(at=clock.now())
+                    uow.conversations.save(conversation)
+                    uow.commit()
+                    logger.info(
+                        "conversa_marcada_takeover",
+                        lead_id=str(lead.id),
+                        conversation_id=str(conversation.id),
                     )
-                    uow.conversations.add(conversation)
-                # Marca takeover
-                conversation.trigger_takeover(at=clock.now())
-                uow.conversations.save(conversation)
-                uow.commit()
-                logger.info(
-                    "conversa_marcada_takeover",
-                    lead_id=str(lead.id),
-                    conversation_id=str(conversation.id),
-                )
-        return {"status": "success", "event": "takeover_detected"}
+            return {"status": "success", "event": "takeover_detected"}
 
-    # Extrai o texto da mensagem (suportando conversation ou extendedTextMessage)
-    message_content = (
-        data.get("message", {}).get("conversation")
-        or data.get("message", {}).get("extendedTextMessage", {}).get("text")
-        or ""
-    )
+        # Extrai o texto da mensagem (suportando conversation ou extendedTextMessage)
+        message_content = (
+            data.get("message", {}).get("conversation")
+            or data.get("message", {}).get("extendedTextMessage", {}).get("text")
+            or ""
+        )
 
-    logger.info(
-        "mensagem_inbound_capturada",
-        message_id=message_id,
-        remote_jid=remote_jid,
-        content_preview=message_content[:30],
-    )
+        logger.info(
+            "mensagem_inbound_capturada",
+            message_id=message_id,
+            remote_jid=remote_jid,
+            content_preview=message_content[:30],
+        )
 
-    # Deduplicação: verifica se já processamos este provider_message_id
-    if not message_id:
-        logger.warning("webhook_sem_message_id")
-        return {"status": "error", "detail": "Missing message id"}
+        # Deduplicação: verifica se já processamos este provider_message_id
+        if not message_id:
+            logger.warning("webhook_sem_message_id")
+            return {"status": "error", "detail": "Missing message id"}
 
-    if uow.inbound_events.exists(message_id):
-        logger.info("webhook_duplicado_ignorado", provider_message_id=message_id)
-        return {"status": "success", "message_id": message_id, "deduped": True}
+        if uow.inbound_events.exists(message_id):
+            logger.info("webhook_duplicado_ignorado", provider_message_id=message_id)
+            return {"status": "success", "message_id": message_id, "deduped": True}
 
-    # Grava evento de inbound para rastreabilidade e idempotência
-    inbound_event = InboundEvent.create(
-        provider_name="evolution",
-        provider_event_id=message_id,
-        event_type="message",
-        payload=payload,
-        at=clock.now(),
-    )
-    uow.inbound_events.add(inbound_event)
-    uow.commit()
+        # Grava evento de inbound para rastreabilidade e idempotência
+        inbound_event = InboundEvent.create(
+            provider_name="evolution",
+            provider_event_id=message_id,
+            event_type="message",
+            payload=payload,
+            at=clock.now(),
+        )
+        uow.inbound_events.add(inbound_event)
+        uow.commit()
 
-    # Enfileira job de processamento assíncrono
-    job = Job(
-        id=uuid4(),
-        name="handle_inbound",
-        payload={
-            "sender_phone": sender_phone,
-            "message_text": message_content,
-            "provider_message_id": message_id,
-        },
-    )
-    await job_queue.enqueue(job)
+        # Enfileira job de processamento assíncrono
+        job = Job(
+            id=uuid4(),
+            name="handle_inbound",
+            payload={
+                "sender_phone": sender_phone,
+                "message_text": message_content,
+                "provider_message_id": message_id,
+            },
+        )
+        await job_queue.enqueue(job)
 
-    return {"status": "success", "message_id": message_id}
+        return {"status": "success", "message_id": message_id}
