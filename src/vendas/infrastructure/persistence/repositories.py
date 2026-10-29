@@ -456,9 +456,7 @@ class SQLAlchemyOutboxRepository:
         if updated_model:
             self._session.merge(updated_model)
         # Registra recibo de entrega apenas se existir mensagem correspondente na tabela messages
-        has_message = (
-            self._session.query(MessageModel).filter_by(id=entity.id).first() is not None
-        )
+        has_message = self._session.query(MessageModel).filter_by(id=entity.id).first() is not None
         if has_message:
             receipt = MessageEventModel(
                 message_id=entity.id,
@@ -495,9 +493,7 @@ class SQLAlchemyOutboxRepository:
         if entity.status == DomainOutboxStatus.DEAD_LETTER:
             event_type = "DEAD_LETTER"
         # Registra evento apenas se existir mensagem correspondente na tabela messages
-        has_message = (
-            self._session.query(MessageModel).filter_by(id=entity.id).first() is not None
-        )
+        has_message = self._session.query(MessageModel).filter_by(id=entity.id).first() is not None
         if has_message:
             receipt = MessageEventModel(
                 message_id=entity.id,

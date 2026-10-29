@@ -296,7 +296,7 @@ class Container:
         )
 
         session = self.session_factory()
-        port = SQLAlchemyLeadDataSubjectAdapter(session)
+        port = SQLAlchemyLeadDataSubjectAdapter(session, self.clock)
         return ExportLeadDataHandler(port)
 
     def get_anonymize_lead_data_handler(self) -> AnonymizeLeadDataHandler:
@@ -306,7 +306,7 @@ class Container:
         )
 
         session = self.session_factory()
-        port = SQLAlchemyLeadDataSubjectAdapter(session)
+        port = SQLAlchemyLeadDataSubjectAdapter(session, self.clock)
         return AnonymizeLeadDataHandler(port, cast(UowProtocolForLGPD, self.uow))
 
     def get_delete_lead_data_handler(self) -> DeleteLeadDataHandler:
@@ -316,7 +316,7 @@ class Container:
         )
 
         session = self.session_factory()
-        port = SQLAlchemyLeadDataSubjectAdapter(session)
+        port = SQLAlchemyLeadDataSubjectAdapter(session, self.clock)
         return DeleteLeadDataHandler(port, cast(UowProtocolForLGPD, self.uow))
 
     # --- query helpers -------------------------------------------------------
