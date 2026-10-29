@@ -41,15 +41,6 @@ class HandleInboundCommand:
         if at is None:
             at = self._clock.now()
         with self._uow as uow:
-            # 1. Validação de Idempotência do Inbound
-            if hasattr(uow, "inbound_events") and uow.inbound_events:
-                if uow.inbound_events.exists(provider_message_id):
-                    logger.info(
-                        "inbound_duplicado_ignorado", provider_message_id=provider_message_id
-                    )
-                    return
-                uow.inbound_events.record(provider_message_id, sender_phone, message_text)
-
             # 2. Localiza o lead pelo telefone normalizado (Single-Tenant)
             phone_vo = Phone(sender_phone)
             lead = uow.leads.find_by_dedupe_key(cnpj=None, phone=phone_vo)
@@ -93,8 +84,8 @@ class HandleInboundCommand:
                     return
 
                 # 5. Monta o contexto para o Agente de IA
-                # Histórico vazio por simplicidade; pode ser preenchido futuramente
-                history: Sequence[Message] = ()
+                # Carrega histórico real da conversa
+                history: Sequence[Message] = conversation.messages if conversation else ()
 
                 # Busca base de conhecimento (preview) para injetar no contexto
                 kb_preview = self._knowledge_base.preview(message_text, at=at)

@@ -97,18 +97,24 @@ class Phone:
         if raw is None:
             raise ValueError("Telefone não pode ser None")
 
+        # Suporta JID do WhatsApp (ex: "5511999999999@s.whatsapp.net")
+        # Extrai a parte antes do '@' se presente
+        candidate = raw.split("@")[0] if "@" in raw else raw
+
         # Remove tudo que não é dígito
-        digits = re.sub(r"\D", "", raw)
+        digits = re.sub(r"\D", "", candidate)
 
         # Se começa com +, remove o +
-        if raw.strip().startswith("+"):
+        if candidate.strip().startswith("+"):
             # Já tem DDI explícito, valida se é 55
             if not digits.startswith("55"):
                 raise ValueError("DDI deve ser 55")
         else:
             # Sem DDI explícito, assume Brasil
             digits = digits.removeprefix("0")  # Remove 0 inicial de DDD
-            digits = "55" + digits
+            # Evita duplicar o DDI se já estiver presente (ex: "5511999999999")
+            if not digits.startswith("55"):
+                digits = "55" + digits
 
         return f"+{digits}"
 

@@ -98,6 +98,12 @@ async def receive_whatsapp_webhook(
         logger.info("webhook_ignorado_grupo", remote_jid=remote_jid)
         return {"status": "ignored", "reason": "group_message"}
 
+    # Normaliza telefone via Phone VO (suporta JID)
+    from vendas.domain.value_objects.phone import Phone
+
+    phone_vo = Phone(remote_jid) if remote_jid else None
+    sender_phone = str(phone_vo) if phone_vo else None
+
     # Se a mensagem foi enviada por nós mesmos (fromMe), verifica se é echo do bot
     if from_me:
         # Verifica se o message_id existe na outbox (nossa mensagem enviada)
@@ -110,14 +116,6 @@ async def receive_whatsapp_webhook(
             return {"status": "acknowledged", "type": "outbound_echo"}
         # Caso contrário, é takeover humano
         logger.warning("takeover_humano_detectado", message_id=message_id, remote_jid=remote_jid)
-        # Localiza lead pelo telefone
-        from vendas.domain.value_objects.phone import Phone
-
-        # remote_jid vem no formato "5511999999999@s.whatsapp.net", extrair apenas o número
-        phone_number = remote_jid.split("@")[0] if remote_jid and "@" in remote_jid else remote_jid
-        # Remove código do país (55) se presente, pois Phone assume Brasil e adiciona 55
-        phone_number = phone_number.removeprefix("55")
-        phone_vo = Phone(phone_number) if phone_number else None
         if phone_vo:
             lead = uow.leads.find_by_dedupe_key(cnpj=None, phone=phone_vo)
             if lead:
@@ -182,7 +180,7 @@ async def receive_whatsapp_webhook(
         id=uuid4(),
         name="handle_inbound",
         payload={
-            "sender_phone": remote_jid,
+            "sender_phone": sender_phone,
             "message_text": message_content,
             "provider_message_id": message_id,
         },
