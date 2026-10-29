@@ -1,13 +1,14 @@
 # STATE.md — vendas-de-sistemas
 Atualizado em: 29/10/2026
-Branch e commit: master (Plano de Construção F0 a F9 Concluído com Sucesso)
-Fase atual: Sistema Pronto para Operação / Estágio 0 do Rollout Controlado
+Branch e commit: master (1543a49 — Tarefa T-LLM-01: migração SDK Gemini concluída)
+Fase atual: Estágio 0 do Rollout Controlado (Dry-Run em Produção)
 
 Métricas Finais de Qualidade (Quality Gates 100% Verdes):
-- pytest tests/unit -q: 239 passed (execução pura em memória, zero I/O)
+- pytest tests/unit -q: 243 passed (execução pura em memória, zero I/O)
 - pytest tests/integration -q: 12 passed (PostgreSQL ativo via vendas_db_test isolado com migrations do Alembic)
 - tests/contract: 18 passed (Apify, Firecrawl e Evolution validados com MockTransport sem rede)
 - tests/evaluation: 7 passed (suíte adversarial de IA contra prompt injection e alucinação de preços)
+- **Total testes unitários/contratuais/adversariais: 268**
 - python -m mypy src/vendas --strict: Success (0 erros em 117 source files)
 - ruff check src tests: All checks passed!
 - ruff format --check src tests: 100% formatado
@@ -26,4 +27,5 @@ Status de Entrega das Fases (100% Concluídas):
 - F9 Rollout Controlado: Concluída e homologada (docs/runbooks/rollout-estagios.md).
 
 Próximo passo:
-- Iniciar a operação no Estágio 0 (Dry-Run em Produção) seguindo rigorosamente o checklist de docs/runbooks/rollout-estagios.md.
+- Executar Estágio 0 (Dry-Run em Produção) seguindo rigorosamente o checklist de docs/runbooks/rollout-estagios.md.
+- Monitorar métricas de entrega, latência e supressões durante 48h antes de avançar para Estágio 1.
