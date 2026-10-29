@@ -523,13 +523,3 @@ CREATE INDEX idx_rollout_audit_trigger ON rollout_audit(trigger);
 
 **Fim do Documento**  
 *Este runbook deve ser revisado a cada promoção de estágio e trimestralmente. Qualquer alteração requer aprovação de Tech Lead + Eng. Plantão.*
-#### Procedimento de Emergência (Estágio 4)
-Ver **Seção 7** — Kill Switch Total.
-
-#### Revisão Contínua
-- **Semanal**: Tech Lead revisa métricas + amostra 20 conversas
-- **Mensal**: PO + Legal + Tech Lead — revisão LGPD, tetos, KB
-- **Trimestral**: Revisão completa deste runbook
-- [ ] 1 agendamento real confirmado
-- [ ] Latência P95 dispatcher < 2 s
-- [ ] Assinatura: Tech Lead + Eng. Plantão

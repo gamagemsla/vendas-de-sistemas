@@ -23,6 +23,7 @@ __pycache__/
 chroma_db/
 data/
 logs/
+.budgets/
 
 # IDEs e Ferramentas
 .vscode/

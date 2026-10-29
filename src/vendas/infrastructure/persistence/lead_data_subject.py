@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from vendas.domain.ports import Clock
 from vendas.domain.ports.lead_data_subject import LeadDataExport, LeadDataSubjectPort
+from vendas.infrastructure.clock import SystemClock
 from vendas.infrastructure.persistence.orm_models import (
     AuditLog,
     Booking,
@@ -26,8 +27,9 @@ from vendas.infrastructure.persistence.orm_models import (
 class SQLAlchemyLeadDataSubjectAdapter(LeadDataSubjectPort):
     """Adapter SQLAlchemy para operações de direitos do titular (LGPD)."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, clock: Clock | None = None) -> None:
         self._session = session
+        self._clock = clock or SystemClock()
 
     async def export(self, lead_id: UUID) -> LeadDataExport:
         """Exporta todos os dados pessoais do lead."""
@@ -177,7 +179,7 @@ class SQLAlchemyLeadDataSubjectAdapter(LeadDataSubjectPort):
         lead.handoff_notes = None
         lead.loss_reason = None
         lead.source_data = None
-        lead.updated_at = datetime.now()
+        lead.updated_at = self._clock.now()
 
         conversations = (
             self._session.execute(select(Conversation).where(Conversation.lead_id == lead_id))
@@ -229,7 +231,7 @@ class SQLAlchemyLeadDataSubjectAdapter(LeadDataSubjectPort):
             .all()
         )
         for consent in consent_records:
-            consent.revoked_at = datetime.now()
+            consent.revoked_at = self._clock.now()
 
         self._session.flush()
 
