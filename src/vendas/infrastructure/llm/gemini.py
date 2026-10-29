@@ -1,4 +1,5 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import errors, types
 from pydantic import BaseModel, Field
 
 from vendas.domain.ports import AgentContext, AgentDecision, BudgetTracker
@@ -43,19 +44,9 @@ class GeminiConversationAgent:
         model_name: str = "gemini-1.5-pro",
         budget_tracker: BudgetTracker | None = None,
     ) -> None:
-        genai.configure(api_key=api_key)
+        self._client = genai.Client(api_key=api_key)
         self._model_name = model_name
         self._budget_tracker = budget_tracker
-
-        # Configura o modelo para impor obrigatoriamente um schema Pydantic na saída (Structured Outputs)
-        self._model = genai.GenerativeModel(
-            model_name=self._model_name,
-            generation_config={
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-                "response_schema": AgentDecisionDTO,
-            },
-        )
 
     @property
     def agent_name(self) -> str:
@@ -68,8 +59,18 @@ class GeminiConversationAgent:
 
         full_prompt = build_gemini_prompt(context)
 
+        config = types.GenerateContentConfig(
+            temperature=0.2,
+            response_mime_type="application/json",
+            response_schema=AgentDecisionDTO,
+        )
+
         try:
-            response = self._model.generate_content(full_prompt)
+            response = self._client.models.generate_content(
+                model=self._model_name,
+                contents=full_prompt,
+                config=config,
+            )
             dto = AgentDecisionDTO.model_validate_json(response.text)
 
             # Map DTO to domain AgentDecision
@@ -87,8 +88,20 @@ class GeminiConversationAgent:
                 metadata=metadata,
             )
 
+        except errors.APIError as e:
+            # Erro da API do Gemini (ex.: quota, model not found, etc.)
+            return AgentDecision(
+                action="handoff",
+                response_text=(
+                    "Entendo perfeitamente. Para lhe dar uma resposta exata e personalizada, "
+                    "vou transferir o seu atendimento para um especialista humano agora mesmo."
+                ),
+                confidence=0.0,
+                handoff_reason=f"Falha de segurança e indisponibilidade do LLM: {e!s}",
+                metadata={"intent": "llm_error_fallback", "prompt_version": PROMPT_VERSION},
+            )
         except Exception as e:  # noqa: BLE001
-            # Degradação graciosa e segura: se o Gemini falhar, aciona o handoff humano imediatamente
+            # Qualquer outra falha inesperada
             return AgentDecision(
                 action="handoff",
                 response_text=(
