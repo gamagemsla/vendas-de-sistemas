@@ -18,7 +18,17 @@ router = APIRouter(prefix="/webhooks/whatsapp", tags=["Webhooks WhatsApp"])
 
 
 def _verify_signature(body: bytes, signature_header: str | None) -> bool:
-    """Valida assinatura HMAC-SHA256 em tempo constante."""
+    """Valida assinatura HMAC-SHA256 em tempo constante.
+
+    NOTA: A Evolution API não documenta oficialmente o método de assinatura de webhook.
+    Este código suporta dois formatos por compatibilidade:
+    - X-Hub-Signature-256: padrão Meta/WhatsApp Cloud API (HMAC-SHA256)
+    - X-Evolution-Signature: header customizado da Evolution API (método NÃO COMPROVADO)
+
+    Se a Evolution API enviar segredo compartilhado simples (sem HMAC), a validação
+    falhará de forma segura (retorna False). Ajustar conforme documentação oficial
+    quando disponível.
+    """
     secret = settings.WEBHOOK_SECRET
     if not secret:
         # Sem secret configurado: em dev/testes aceita; em produção deve ser configurado.

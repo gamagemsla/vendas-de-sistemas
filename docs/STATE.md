@@ -1,7 +1,7 @@
 # STATE.md — vendas-de-sistemas
 Atualizado em: 30/10/2026
 Branch e commit: master (1543a49 — Tarefa T-LLM-01: migração SDK Gemini concluída)
-Fase atual: Estágio 0 do Rollout Controlado (Dry-Run em Produção com AUTOMATION_ENABLED=true)
+Fase atual: Estágio 0 do Rollout Controlado — Dry-Run em Produção (AUTOMATION_ENABLED=true, DRY_RUN=true)
 
 Métricas Finais de Qualidade (Quality Gates 100% Verdes):
 - pytest tests/unit -q: 243 passed (execução pura em memória, zero I/O)
@@ -26,6 +26,6 @@ Status de Entrega das Fases (100% Concluídas):
 - F8 Hardening e Implantação: Concluída e auditada.
 - F9 Rollout Controlado: Concluída e homologada (docs/runbooks/rollout-estagios.md).
 
-Próximo passo:
+Próximo passo (após validação dos quality gates desta tarefa):
 - Executar Estágio 0 (Dry-Run em Produção) seguindo rigorosamente o checklist de docs/runbooks/rollout-estagios.md.
 - Monitorar métricas de entrega, latência e supressões durante 48h antes de avançar para Estágio 1.
