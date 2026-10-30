@@ -685,6 +685,8 @@ class InboundEvent(Base):
     processed: Mapped[bool] = mapped_column(default=False, nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -695,6 +697,7 @@ class InboundEvent(Base):
         ),
         Index("ix_inbound_events_processed", "processed"),
         Index("ix_inbound_events_created", "created_at"),
+        Index("ix_inbound_events_claim", "processed", "locked_until"),
     )
 
     def __repr__(self) -> str:

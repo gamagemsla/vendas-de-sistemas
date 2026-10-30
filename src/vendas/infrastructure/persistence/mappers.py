@@ -151,6 +151,8 @@ class InboundEventMapper:
             processed=model.processed,
             processed_at=model.processed_at,
             error_message=model.error_message,
+            attempts=model.attempts,
+            locked_until=model.locked_until,
             created_at=model.created_at,
         )
 
@@ -169,6 +171,8 @@ class InboundEventMapper:
             processed=entity.processed,
             processed_at=entity.processed_at,
             error_message=entity.error_message,
+            attempts=entity.attempts,
+            locked_until=entity.locked_until,
             created_at=entity.created_at,
         )
 

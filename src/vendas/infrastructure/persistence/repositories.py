@@ -1,7 +1,7 @@
 """SQLAlchemy Repositories - Implementação completa (Parte 1 CORRIGIDA)."""
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -679,6 +679,74 @@ class SQLAlchemyInboundEventRepository:
     def exists(self, provider_event_id: str) -> bool:
         """Verifica existência usando provider_name fixo 'evolution'."""
         return self.exists_by_provider_id("evolution", provider_event_id)
+
+    def claim_batch(
+        self,
+        lease_seconds: int,
+        batch_size: int = 10,
+        now: datetime | None = None,
+    ) -> list[InboundEvent]:
+        """
+        Reivindica um lote de eventos não processados para processamento.
+
+        Usa SELECT ... FOR UPDATE SKIP LOCKED para evitar concorrência.
+        Atualiza attempts e locked_until atomicamente.
+        Retorna lista de eventos reivindicados (pode ser vazia).
+        """
+        if now is None:
+            raise ValueError("Timestamp 'now' é obrigatório para claim_batch")
+
+        from sqlalchemy import text
+
+        locked_until = now + timedelta(seconds=lease_seconds)
+
+        # Use raw SQL for FOR UPDATE SKIP LOCKED with UPDATE ... RETURNING
+        # This is PostgreSQL-specific but works with SQLite too (SKIP LOCKED ignored)
+        sql = text(
+            """
+            UPDATE inbound_events
+            SET attempts = attempts + 1,
+                locked_until = :locked_until
+            WHERE id IN (
+                SELECT id
+                FROM inbound_events
+                WHERE processed = false
+                  AND (locked_until IS NULL OR locked_until <= :now)
+                ORDER BY created_at ASC
+                LIMIT :batch_size
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id, provider_name, provider_event_id, event_type, payload,
+                      processed, processed_at, error_message, attempts, locked_until, created_at
+            """
+        )
+        result = self._session.execute(
+            sql,
+            {"locked_until": locked_until, "now": now, "batch_size": batch_size},
+        )
+        rows = result.fetchall()
+
+        events = []
+        for row in rows:
+            # Create model from row
+            model = InboundEventModel(
+                id=row.id,
+                provider_name=row.provider_name,
+                provider_event_id=row.provider_event_id,
+                event_type=row.event_type,
+                payload=row.payload,
+                processed=row.processed,
+                processed_at=row.processed_at,
+                error_message=row.error_message,
+                attempts=row.attempts,
+                locked_until=row.locked_until,
+                created_at=row.created_at,
+            )
+            domain_event = InboundEventMapper.to_domain(model)
+            if domain_event:
+                events.append(domain_event)
+
+        return events
 
 
 class SQLAlchemySuppressionRepository:

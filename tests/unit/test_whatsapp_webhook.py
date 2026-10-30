@@ -1,15 +1,15 @@
 import hashlib
 import hmac
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from vendas.bootstrap.settings import settings
-from vendas.domain.ports import ChannelStatePort, Clock, JobQueue, UnitOfWork
+from vendas.domain.ports import ChannelStatePort, Clock, UnitOfWork
 from vendas.interfaces.api.app import create_app
-from vendas.interfaces.api.deps import get_channel_state_port, get_clock, get_job_queue, get_uow
+from vendas.interfaces.api.deps import get_channel_state_port, get_clock, get_uow
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def client():
 def mock_uow():
     uow = MagicMock(spec=UnitOfWork)
     uow.inbound_events = MagicMock()
-    uow.inbound_events.exists.return_value = False
+    uow.inbound_events.exists_by_provider_id.return_value = False
     uow.inbound_events.add = MagicMock()
     uow.leads = MagicMock()
     uow.leads.find_by_dedupe_key.return_value = None
@@ -36,11 +36,6 @@ def mock_uow():
     uow.__enter__ = MagicMock(return_value=uow)
     uow.__exit__ = MagicMock(return_value=False)
     return uow
-
-
-@pytest.fixture
-def mock_job_queue():
-    return AsyncMock(spec=JobQueue)
 
 
 @pytest.fixture
@@ -64,18 +59,17 @@ def _sign(payload: bytes, secret: str) -> str:
     return f"sha256={digest}"
 
 
-def _override_deps(client, uow, job_queue, clock, channel_state_port):
+def _override_deps(client, uow, clock, channel_state_port):
     client.app.dependency_overrides[get_uow] = lambda: uow
-    client.app.dependency_overrides[get_job_queue] = lambda: job_queue
     client.app.dependency_overrides[get_clock] = lambda: clock
     client.app.dependency_overrides[get_channel_state_port] = lambda: channel_state_port
 
 
-def test_webhook_valid_signature_enqueues_job(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
+def test_webhook_valid_signature_persists_inbound_event(
+    client, mock_uow, mock_clock, mock_channel_state_port
 ):
     settings.WEBHOOK_SECRET = "testsecret"
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",
@@ -95,14 +89,13 @@ def test_webhook_valid_signature_enqueues_job(
     assert data["message_id"] == "msg-123"
     mock_uow.inbound_events.add.assert_called_once()
     mock_uow.commit.assert_called_once()
-    mock_job_queue.enqueue.assert_awaited_once()
 
 
 def test_webhook_invalid_signature_returns_error(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port
 ):
     settings.WEBHOOK_SECRET = "testsecret"
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",
@@ -120,12 +113,10 @@ def test_webhook_invalid_signature_returns_error(
     assert response.json()["detail"] == "Invalid signature"
 
 
-def test_webhook_duplicate_message_ignored(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
-):
+def test_webhook_duplicate_message_ignored(client, mock_uow, mock_clock, mock_channel_state_port):
     settings.WEBHOOK_SECRET = "testsecret"
-    mock_uow.inbound_events.exists.return_value = True
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    mock_uow.inbound_events.exists_by_provider_id.return_value = True
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",
@@ -143,14 +134,11 @@ def test_webhook_duplicate_message_ignored(
     data = response.json()
     assert data["deduped"] is True
     mock_uow.inbound_events.add.assert_not_called()
-    mock_job_queue.enqueue.assert_not_awaited()
 
 
-def test_webhook_group_message_ignored(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
-):
+def test_webhook_group_message_ignored(client, mock_uow, mock_clock, mock_channel_state_port):
     settings.WEBHOOK_SECRET = "testsecret"
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",
@@ -164,10 +152,10 @@ def test_webhook_group_message_ignored(
 
 
 def test_webhook_connection_update_close_sets_disconnected(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port
 ):
     settings.WEBHOOK_SECRET = "testsecret"
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "CONNECTION_UPDATE",
@@ -184,10 +172,10 @@ def test_webhook_connection_update_close_sets_disconnected(
 
 
 def test_webhook_connection_update_open_sets_connected(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port
 ):
     settings.WEBHOOK_SECRET = "testsecret"
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "CONNECTION_UPDATE",
@@ -204,10 +192,10 @@ def test_webhook_connection_update_open_sets_connected(
 
 
 def test_webhook_qrcode_updated_sets_qr_pending(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port
 ):
     settings.WEBHOOK_SECRET = "testsecret"
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "QRCODE_UPDATED",
@@ -223,9 +211,7 @@ def test_webhook_qrcode_updated_sets_qr_pending(
     assert data["status"] == "success"
 
 
-def test_webhook_from_me_takeover_detected(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
-):
+def test_webhook_from_me_takeover_detected(client, mock_uow, mock_clock, mock_channel_state_port):
     settings.WEBHOOK_SECRET = "testsecret"
     # Configura mocks para simular lead existente e conversa
     mock_lead = MagicMock()
@@ -241,7 +227,7 @@ def test_webhook_from_me_takeover_detected(
     mock_uow.outbox = MagicMock()
     mock_uow.outbox.exists_by_provider_message_id.return_value = False
 
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",
@@ -269,15 +255,13 @@ def test_webhook_from_me_takeover_detected(
     mock_uow.commit.assert_called_once()
 
 
-def test_webhook_from_me_echo_ignored(
-    client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port
-):
+def test_webhook_from_me_echo_ignored(client, mock_uow, mock_clock, mock_channel_state_port):
     settings.WEBHOOK_SECRET = "testsecret"
     # outbox tem o message_id (é echo do bot)
     mock_uow.outbox = MagicMock()
     mock_uow.outbox.exists_by_provider_message_id.return_value = True
 
-    _override_deps(client, mock_uow, mock_job_queue, mock_clock, mock_channel_state_port)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",

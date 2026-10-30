@@ -369,5 +369,13 @@ class Container:
             )
         )
 
+    def get_clock(self) -> Clock:
+        """Retorna a instância do Clock configurada."""
+        return self.clock
+
+    def get_uow_factory(self) -> Callable[[], SQLAlchemyUnitOfWork]:
+        """Retorna uma factory para criar novas instâncias de UnitOfWork."""
+        return lambda: SQLAlchemyUnitOfWork(self.session_factory, self.clock)
+
 
 container = Container()

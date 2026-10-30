@@ -297,6 +297,40 @@ class OutboxRepository(Repository[OutboxMessage], Protocol):
 
 
 # =============================================================================
+# Inbound Events Repository Port
+# =============================================================================
+
+from vendas.domain.entities.inbound_event import InboundEvent
+
+
+class InboundEventRepository(Repository[InboundEvent], Protocol):
+    """Port para persistência de eventos de entrada (inbound)."""
+
+    def get_unprocessed(self, limit: int = 100) -> Sequence[InboundEvent]:
+        """Busca eventos não processados (para compatibilidade/fallback)."""
+        ...
+
+    def exists_by_provider_id(self, provider_name: str, provider_event_id: str) -> bool:
+        """Verifica se evento já existe pelo provider_name e provider_event_id."""
+        ...
+
+    def claim_batch(
+        self,
+        lease_seconds: int,
+        batch_size: int = 10,
+        now: datetime | None = None,
+    ) -> Sequence[InboundEvent]:
+        """
+        Reivindica um lote de eventos não processados para processamento.
+
+        Usa SELECT ... FOR UPDATE SKIP LOCKED para evitar concorrência.
+        Atualiza attempts e locked_until atomicamente.
+        Retorna lista de eventos reivindicados (pode ser vazia).
+        """
+        ...
+
+
+# =============================================================================
 # Message Channel Port
 # =============================================================================
 
@@ -626,7 +660,7 @@ class UnitOfWork(Protocol):
     outbox: OutboxRepository
     enrollments: EnrollmentRepository
     bookings: Any
-    inbound_events: Any
+    inbound_events: InboundEventRepository
     suppression: Any
 
     def __enter__(self) -> Self:
@@ -733,6 +767,7 @@ __all__ = [
     "ConversationRepository",
     "EnrichedLeadData",
     "Entity",
+    "InboundEventRepository",
     "Job",
     "JobQueue",
     "JobResult",

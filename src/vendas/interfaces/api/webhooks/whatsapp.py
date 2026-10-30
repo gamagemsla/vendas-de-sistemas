@@ -1,16 +1,16 @@
 import hashlib
 import hmac
 from typing import Any
-from uuid import uuid4
 
 import structlog
 from fastapi import APIRouter, Header, Request, status
+from sqlalchemy.exc import IntegrityError
 
 from vendas.bootstrap.settings import settings
 from vendas.domain.entities.conversation import Conversation
 from vendas.domain.entities.inbound_event import InboundEvent
-from vendas.domain.ports import ChannelStatePort, Clock, Job, JobQueue, UnitOfWork
-from vendas.interfaces.api.deps import channel_state_dep, clock_dep, job_queue_dep, uow_dep
+from vendas.domain.ports import ChannelStatePort, Clock, UnitOfWork
+from vendas.interfaces.api.deps import channel_state_dep, clock_dep, uow_dep
 
 logger = structlog.get_logger()
 
@@ -42,7 +42,6 @@ async def receive_whatsapp_webhook(
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
     x_evolution_signature: str | None = Header(default=None, alias="X-Evolution-Signature"),
     uow: UnitOfWork = uow_dep,
-    job_queue: JobQueue = job_queue_dep,
     clock: Clock = clock_dep,
     channel_state_port: ChannelStatePort = channel_state_dep,
 ) -> dict[str, Any]:
@@ -103,7 +102,7 @@ async def receive_whatsapp_webhook(
         from vendas.domain.value_objects.phone import Phone
 
         phone_vo = Phone(remote_jid) if remote_jid else None
-        sender_phone = str(phone_vo) if phone_vo else None
+        _ = str(phone_vo) if phone_vo else None
 
         # Se a mensagem foi enviada por nós mesmos (fromMe), verifica se é echo do bot
         if from_me:
@@ -163,7 +162,7 @@ async def receive_whatsapp_webhook(
             logger.warning("webhook_sem_message_id")
             return {"status": "error", "detail": "Missing message id"}
 
-        if uow.inbound_events.exists(message_id):
+        if uow.inbound_events.exists_by_provider_id("evolution", message_id):
             logger.info("webhook_duplicado_ignorado", provider_message_id=message_id)
             return {"status": "success", "message_id": message_id, "deduped": True}
 
@@ -176,18 +175,12 @@ async def receive_whatsapp_webhook(
             at=clock.now(),
         )
         uow.inbound_events.add(inbound_event)
-        uow.commit()
-
-        # Enfileira job de processamento assíncrono
-        job = Job(
-            id=uuid4(),
-            name="handle_inbound",
-            payload={
-                "sender_phone": sender_phone,
-                "message_text": message_content,
-                "provider_message_id": message_id,
-            },
-        )
-        await job_queue.enqueue(job)
+        try:
+            uow.commit()
+        except IntegrityError:
+            # Constraint única (uq_inbound_events_provider_event) violada = duplicata
+            logger.info("webhook_duplicado_constraint", provider_message_id=message_id)
+            uow.rollback()
+            return {"status": "success", "message_id": message_id, "deduped": True}
 
         return {"status": "success", "message_id": message_id}

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+from uuid import UUID
 
 import pytest
 
 from vendas.bootstrap.settings import settings
+from vendas.domain.ports import Job, JobResult
 from vendas.interfaces.worker.main import Worker
 
 
@@ -29,15 +31,34 @@ class FakeEnrichCommand:
 
 class FakeJobQueue:
     def __init__(self) -> None:
-        self._jobs = []
+        self._jobs: list[Job] = []
+        self.completed_jobs: list[tuple[UUID, JobResult]] = []
+        self.requeued_jobs: list[tuple[UUID, int | None]] = []
 
-    def enqueue(self, job) -> None:
+    async def enqueue(self, job: Job) -> None:
         self._jobs.append(job)
 
-    def dequeue(self):
-        if self._jobs:
-            return self._jobs.pop(0)
-        return None
+    async def dequeue(
+        self,
+        worker_id: str,
+        max_jobs: int,
+        queue_names: list[str] | None = None,
+    ) -> list[Job]:
+        # Filter by queue_names if provided
+        available = self._jobs
+        if queue_names:
+            available = [j for j in self._jobs if j.name in queue_names]
+
+        claimed = available[:max_jobs]
+        for job in claimed:
+            self._jobs.remove(job)
+        return claimed
+
+    async def complete(self, job_id: UUID, result: JobResult) -> None:
+        self.completed_jobs.append((job_id, result))
+
+    async def requeue(self, job_id: UUID, delay_seconds: int | None = None) -> None:
+        self.requeued_jobs.append((job_id, delay_seconds))
 
 
 class FakeDispatcher:
@@ -50,7 +71,8 @@ class FakeCadenceProcessor:
         return 0
 
 
-def test_worker_ingest_and_enrich_cycles(monkeypatch):
+@pytest.mark.asyncio
+async def test_worker_ingest_and_enrich_cycles(monkeypatch):
     """Verifica que os ciclos de ingestão e enriquecimento são executados periodicamente."""
     # Configura intervals curtos para teste
     monkeypatch.setattr(settings, "WORKER_POLL_INTERVAL_SECONDS", 1)
@@ -68,10 +90,13 @@ def test_worker_ingest_and_enrich_cycles(monkeypatch):
     # adiciona um job de enriquecimento
     class _Job:
         def __init__(self):
+            self.id = UUID("12345678-1234-5678-1234-567812345678")
             self.name = "enrich_lead"
             self.payload = {"lead_id": "lead-1"}
+            self.retry_count = 0
+            self.max_retries = 3
 
-    fake_queue.enqueue(_Job())
+    await fake_queue.enqueue(_Job())
 
     worker = Worker(poll_interval_seconds=1, batch_size=5)
     # substitui dependências por fakes
@@ -93,7 +118,7 @@ def test_worker_ingest_and_enrich_cycles(monkeypatch):
     t = threading.Thread(target=stop_after)
     t.start()
     try:
-        worker.run()
+        await worker.run()
     except SystemExit:
         pass
     t.join()
@@ -104,7 +129,8 @@ def test_worker_ingest_and_enrich_cycles(monkeypatch):
     assert fake_enrich.call_count == 1
 
 
-def test_worker_kill_switch_stops_immediately(monkeypatch):
+@pytest.mark.asyncio
+async def test_worker_kill_switch_stops_immediately(monkeypatch):
     """KILL_SWITCH deve interromper o worker antes de qualquer ciclo."""
     monkeypatch.setattr(settings, "WORKER_POLL_INTERVAL_SECONDS", 1)
     monkeypatch.setattr(settings, "WORKER_INGEST_INTERVAL_SECONDS", 1)
@@ -122,7 +148,7 @@ def test_worker_kill_switch_stops_immediately(monkeypatch):
 
     # O loop deve sair imediatamente sem chamar comandos
     with pytest.raises(SystemExit):
-        worker.run()
+        await worker.run()
 
 
 if __name__ == "__main__":
