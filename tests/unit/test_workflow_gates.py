@@ -17,7 +17,7 @@ def test_opt_out_intercepted_before_ai():
     clock = MagicMock()
 
     inbound_mock = MagicMock()
-    inbound_mock.exists.return_value = False
+    inbound_mock.exists_by_provider_id.return_value = False
     uow.inbound_events = inbound_mock
 
     lead_mock = MagicMock()
@@ -49,7 +49,7 @@ def test_inbound_webhook_deduplication():
     agent = MagicMock()
     clock = MagicMock()
 
-    uow.inbound_events.exists.return_value = True
+    uow.inbound_events.exists_by_provider_id.return_value = True
 
     command = HandleInboundCommand(
         uow=uow,

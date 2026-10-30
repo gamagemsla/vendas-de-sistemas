@@ -118,3 +118,49 @@ class FakeLeadSource(LeadSource):
 
     def set_leads(self, leads: list[dict[str, Any]]) -> None:
         self._leads = leads
+
+
+# ---- Fake InboundEventRepository ----
+from collections.abc import Sequence
+from datetime import datetime
+from uuid import UUID
+
+from vendas.domain.entities.inbound_event import InboundEvent
+
+
+class FakeInboundEventRepository:
+    """Fake InboundEventRepository para testes unitários."""
+
+    def __init__(self) -> None:
+        self.storage: dict[str, InboundEvent] = {}  # key: provider_event_id
+
+    def exists_by_provider_id(self, provider_name: str, provider_event_id: str) -> bool:
+        return provider_event_id in self.storage
+
+    def add(self, entity: InboundEvent) -> None:
+        self.storage[entity.provider_event_id] = entity
+
+    def get_unprocessed(self, limit: int = 100) -> Sequence[InboundEvent]:
+        return list(self.storage.values())[:limit]
+
+
+# ---- Fake ConversationRepository ----
+from vendas.domain.entities.conversation import Conversation
+
+
+class FakeConversationRepository:
+    """Fake ConversationRepository para testes unitários."""
+
+    def __init__(self) -> None:
+        self.storage: dict[UUID, Conversation] = {}
+
+    def get_by_lead_id(self, lead_id: UUID | str) -> Conversation | None:
+        if isinstance(lead_id, str):
+            lead_id = UUID(lead_id)
+        return self.storage.get(lead_id)
+
+    def add(self, conversation: Conversation) -> None:
+        self.storage[conversation.id] = conversation
+
+    def save(self, conversation: Conversation) -> None:
+        self.storage[conversation.id] = conversation

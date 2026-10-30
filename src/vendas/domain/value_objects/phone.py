@@ -75,6 +75,14 @@ VALID_DDDS = {
 }
 
 
+class UnidentifiedContactError(ValueError):
+    """Exceção levantada quando o identificador é um @lid opaco (contato não identificado)."""
+
+    def __init__(self, lid: str) -> None:
+        self.lid = lid
+        super().__init__(f"Contato não identificado (LID opaco): {lid}")
+
+
 @dataclass(frozen=True, slots=True)
 class Phone:
     """
@@ -97,9 +105,17 @@ class Phone:
         if raw is None:
             raise ValueError("Telefone não pode ser None")
 
+        raw_stripped = raw.strip()
+
+        # Detecta identificadores opacos @lid (ex: "1234567890@lid")
+        if "@lid" in raw_stripped.lower():
+            # Extrai o LID antes do @
+            lid = raw_stripped.split("@")[0]
+            raise UnidentifiedContactError(lid)
+
         # Suporta JID do WhatsApp (ex: "5511999999999@s.whatsapp.net")
         # Extrai a parte antes do '@' se presente
-        candidate = raw.split("@")[0] if "@" in raw else raw
+        candidate = raw_stripped.split("@")[0] if "@" in raw_stripped else raw_stripped
 
         # Remove tudo que não é dígito
         digits = re.sub(r"\D", "", candidate)
@@ -115,6 +131,11 @@ class Phone:
             # Evita duplicar o DDI se já estiver presente (ex: "5511999999999")
             if not digits.startswith("55"):
                 digits = "55" + digits
+            else:
+                # DDI já presente (ex: "5511999999999" ou "555511999999999")
+                # Remove DDI duplicado se houver (ex: "5555..." -> "55...")
+                if digits.startswith("5555"):
+                    digits = digits[2:]  # Remove o "55" extra
 
         return f"+{digits}"
 

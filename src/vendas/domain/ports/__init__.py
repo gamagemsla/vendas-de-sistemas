@@ -514,6 +514,7 @@ class AgentContext:
     cadence_step_template: str | None
     lead_enriched_data: EnrichedLeadData | None
     knowledge_base: dict[str, Any]  # Base de conhecimento (preços, FAQ, etc.)
+    current_message: Message | None = None  # Mensagem atual recebida (inbound)
 
 
 @dataclass(frozen=True, slots=True)

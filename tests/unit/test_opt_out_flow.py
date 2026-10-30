@@ -3,7 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from tests.fakes.fakes import FakeClock, InMemoryConversationLock, InMemoryLeadRepository
+from tests.fakes.fakes import (
+    FakeClock,
+    FakeConversationRepository,
+    FakeInboundEventRepository,
+    InMemoryConversationLock,
+    InMemoryLeadRepository,
+)
 from vendas.application.commands.handle_inbound import HandleInboundCommand
 from vendas.application.commands.process_cadence_step import ProcessCadenceStepCommand
 from vendas.domain.entities.cadence_enrollment import CadenceEnrollment, EnrollmentStatus
@@ -140,8 +146,8 @@ class FakeUoW:
         self.enrollments = enrollments
         self.suppression = suppression
         self.outbox = outbox
-        self.inbound_events = None
-        self.conversations = None
+        self.inbound_events = FakeInboundEventRepository()
+        self.conversations = FakeConversationRepository()
         # Dummy session for lock factory compatibility
         self.session = object()
 

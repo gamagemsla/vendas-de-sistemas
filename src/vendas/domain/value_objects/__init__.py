@@ -3,6 +3,6 @@
 from .cnpj import Cnpj
 from .email import Email
 from .money import Money
-from .phone import Phone
+from .phone import Phone, UnidentifiedContactError
 
-__all__ = ["Cnpj", "Email", "Money", "Phone"]
+__all__ = ["Cnpj", "Email", "Money", "Phone", "UnidentifiedContactError"]
