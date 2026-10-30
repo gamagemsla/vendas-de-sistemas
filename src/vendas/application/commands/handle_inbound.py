@@ -4,11 +4,13 @@ from typing import Any
 
 import structlog
 
+from vendas.domain.entities.cadence_enrollment import EnrollmentStatus
 from vendas.domain.entities.conversation import Conversation
 from vendas.domain.entities.conversation import Message as ConversationMessage
 from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.suppression_record import SuppressionReason
 from vendas.domain.policies.opt_out_policy import OptOutPolicy
+from vendas.domain.policies.price_policy import PriceValidationPolicy
 from vendas.domain.ports import AgentContext, Clock, ConversationAgent, ConversationLock, Message
 from vendas.domain.ports.knowledge_base import KnowledgeBasePort
 from vendas.domain.ports.uow import UnitOfWork
@@ -173,27 +175,92 @@ class HandleInboundCommand:
                 # 9. Executa a decisão estruturada com o Agente
                 decision = self._agent.decide(context)
 
-                # 10. Validação de Guardrails e Handoff / Outbox
-                if decision.action == "handoff" or decision.confidence < 0.7:
+                # 10. Validação de preço
+                price_policy = PriceValidationPolicy()
+                final_action = decision.action
+                handoff_reason = decision.handoff_reason
+
+                if final_action in ("reply", "qualify", "disqualify") and decision.response_text:
+                    validation = price_policy.validate(decision.response_text, kb_preview)
+                    if not validation.is_valid:
+                        logger.warning(
+                            "price_validation_failed_forcing_handoff",
+                            mismatches=[str(m) for m in validation.mismatches],
+                        )
+                        final_action = "handoff"
+                        handoff_reason = "price_mismatch"
+
+                # 11. Tratamento das ações
+                if final_action == "handoff":
                     logger.info(
-                        "handoff_acionado_por_guardrail",
-                        reason=decision.handoff_reason,
-                        confidence=decision.confidence,
+                        "handoff_executado", reason=handoff_reason, original_action=decision.action
                     )
-                    conversation.trigger_handoff(
-                        reason=decision.handoff_reason or "baixa_confianca",
-                        at=at,
-                    )
+                    conversation.trigger_handoff(reason=handoff_reason or "handoff", at=at)
                     uow.conversations.save(conversation)
-                else:
-                    outbound_payload = {
-                        "phone": sender_phone,
-                        "content": decision.response_text or "",
-                    }
+                    lead.handoff(assigned_to=None, notes=handoff_reason, at=at)
+                    uow.leads.save(lead)
+                    enrollment = uow.enrollments.get_by_lead(lead.id)
+                    if enrollment and enrollment.status == EnrollmentStatus.ACTIVE:
+                        enrollment.cancel(reason="handoff", at=at)
+                        uow.enrollments.save(enrollment)
                     uow.outbox.add(
-                        event_type="SEND_AI_RESPONSE",
-                        payload=outbound_payload,
-                        idempotency_key=f"inbound-{provider_message_id}-reply",
+                        event_type="HANDOFF_NOTIFICATION",
+                        payload={
+                            "lead_id": str(lead.id),
+                            "conversation_id": str(conversation.id),
+                            "reason": handoff_reason,
+                        },
+                        idempotency_key=f"handoff-{conversation.id}-{at.isoformat()}",
                     )
+                elif final_action == "reply":
+                    if decision.response_text and decision.response_text.strip():
+                        uow.outbox.add(
+                            event_type="SEND_AI_RESPONSE",
+                            payload={"phone": sender_phone, "content": decision.response_text},
+                            idempotency_key=f"inbound-{provider_message_id}-reply",
+                        )
+                elif final_action == "qualify":
+                    if decision.qualification_score is not None:
+                        lead.start_qualification(at=at)
+                        lead.qualification_score = decision.qualification_score
+                        if decision.qualification_notes:
+                            lead.qualification_notes = decision.qualification_notes
+                        uow.leads.save(lead)
+                    if decision.response_text and decision.response_text.strip():
+                        uow.outbox.add(
+                            event_type="SEND_AI_RESPONSE",
+                            payload={"phone": sender_phone, "content": decision.response_text},
+                            idempotency_key=f"inbound-{provider_message_id}-qualify",
+                        )
+                elif final_action == "disqualify":
+                    reason = decision.disqualification_reason or "desqualificado_pela_ia"
+                    lead.disqualify(reason=reason, at=at)
+                    uow.leads.save(lead)
+                    if decision.response_text and decision.response_text.strip():
+                        uow.outbox.add(
+                            event_type="SEND_AI_RESPONSE",
+                            payload={"phone": sender_phone, "content": decision.response_text},
+                            idempotency_key=f"inbound-{provider_message_id}-disqualify",
+                        )
+                elif final_action == "opt_out":
+                    lead.opt_out(reason=decision.opt_out_intent or "opt_out_via_ia", at=at)
+                    uow.leads.save(lead)
+                    if hasattr(uow, "suppression") and uow.suppression:
+                        uow.suppression.add_suppression(
+                            phone_e164=sender_phone,
+                            reason=SuppressionReason.OPT_OUT,
+                            source="whatsapp_opt_out_ia",
+                            notes=f"Opt-out detectado pela IA: {decision.opt_out_intent}",
+                        )
+                    if decision.response_text and decision.response_text.strip():
+                        uow.outbox.add(
+                            event_type="SEND_AI_RESPONSE",
+                            payload={"phone": sender_phone, "content": decision.response_text},
+                            idempotency_key=f"inbound-{provider_message_id}-optout",
+                        )
+                elif final_action == "wait":
+                    logger.debug("wait_action_ia_aguardando", lead_id=lead.id)
+                else:
+                    logger.warning("acao_desconhecida_da_ia", action=final_action)
 
                 uow.commit()
