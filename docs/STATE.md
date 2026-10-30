@@ -1,7 +1,7 @@
 # STATE.md — vendas-de-sistemas
-Atualizado em: 29/10/2026
+Atualizado em: 30/10/2026
 Branch e commit: master (1543a49 — Tarefa T-LLM-01: migração SDK Gemini concluída)
-Fase atual: Estágio 0 do Rollout Controlado (Dry-Run em Produção)
+Fase atual: Estágio 0 do Rollout Controlado (Dry-Run em Produção com AUTOMATION_ENABLED=true)
 
 Métricas Finais de Qualidade (Quality Gates 100% Verdes):
 - pytest tests/unit -q: 243 passed (execução pura em memória, zero I/O)

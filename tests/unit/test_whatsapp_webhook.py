@@ -12,6 +12,14 @@ from vendas.interfaces.api.app import create_app
 from vendas.interfaces.api.deps import get_channel_state_port, get_clock, get_uow
 
 
+@pytest.fixture(autouse=True)
+def _reset_settings(monkeypatch):
+    """Reseta as configurações para valores padrão antes de cada teste."""
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", False)
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "")
+    monkeypatch.setattr(settings, "DRY_RUN", True)
+
+
 @pytest.fixture
 def client():
     app = create_app(auth_port=None)
@@ -66,9 +74,10 @@ def _override_deps(client, uow, clock, channel_state_port):
 
 
 def test_webhook_valid_signature_persists_inbound_event(
-    client, mock_uow, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
-    settings.WEBHOOK_SECRET = "testsecret"
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
@@ -91,10 +100,34 @@ def test_webhook_valid_signature_persists_inbound_event(
     mock_uow.commit.assert_called_once()
 
 
-def test_webhook_invalid_signature_returns_error(
-    client, mock_uow, mock_clock, mock_channel_state_port
+def test_webhook_invalid_signature_returns_401_when_automation_enabled(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
-    settings.WEBHOOK_SECRET = "testsecret"
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
+
+    payload = {
+        "event": "MESSAGES-upsert",
+        "data": {
+            "key": {"id": "msg-1", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": False},
+            "message": {"conversation": "Oi"},
+        },
+    }
+    body = json.dumps(payload).encode()
+    headers = {"X-Hub-Signature-256": "sha256=invalido", "Content-Type": "application/json"}
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid signature"
+
+
+def test_webhook_invalid_signature_allowed_when_automation_disabled(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    """Em desenvolvimento (AUTOMATION_ENABLED=false), assinatura inválida é aceita."""
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", False)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
@@ -109,12 +142,14 @@ def test_webhook_invalid_signature_returns_error(
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
-    assert response.json()["status"] == "error"
-    assert response.json()["detail"] == "Invalid signature"
+    assert response.json()["status"] == "success"
 
 
-def test_webhook_duplicate_message_ignored(client, mock_uow, mock_clock, mock_channel_state_port):
-    settings.WEBHOOK_SECRET = "testsecret"
+def test_webhook_duplicate_message_ignored(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     mock_uow.inbound_events.exists_by_provider_id.return_value = True
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
@@ -136,8 +171,11 @@ def test_webhook_duplicate_message_ignored(client, mock_uow, mock_clock, mock_ch
     mock_uow.inbound_events.add.assert_not_called()
 
 
-def test_webhook_group_message_ignored(client, mock_uow, mock_clock, mock_channel_state_port):
-    settings.WEBHOOK_SECRET = "testsecret"
+def test_webhook_group_message_ignored(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
@@ -152,9 +190,10 @@ def test_webhook_group_message_ignored(client, mock_uow, mock_clock, mock_channe
 
 
 def test_webhook_connection_update_close_sets_disconnected(
-    client, mock_uow, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
-    settings.WEBHOOK_SECRET = "testsecret"
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
@@ -172,9 +211,10 @@ def test_webhook_connection_update_close_sets_disconnected(
 
 
 def test_webhook_connection_update_open_sets_connected(
-    client, mock_uow, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
-    settings.WEBHOOK_SECRET = "testsecret"
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
@@ -192,9 +232,10 @@ def test_webhook_connection_update_open_sets_connected(
 
 
 def test_webhook_qrcode_updated_sets_qr_pending(
-    client, mock_uow, mock_clock, mock_channel_state_port
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
-    settings.WEBHOOK_SECRET = "testsecret"
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
@@ -211,8 +252,11 @@ def test_webhook_qrcode_updated_sets_qr_pending(
     assert data["status"] == "success"
 
 
-def test_webhook_from_me_takeover_detected(client, mock_uow, mock_clock, mock_channel_state_port):
-    settings.WEBHOOK_SECRET = "testsecret"
+def test_webhook_from_me_takeover_detected(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     # Configura mocks para simular lead existente e conversa
     mock_lead = MagicMock()
     mock_lead.id = "lead-123"
@@ -255,8 +299,11 @@ def test_webhook_from_me_takeover_detected(client, mock_uow, mock_clock, mock_ch
     mock_uow.commit.assert_called_once()
 
 
-def test_webhook_from_me_echo_ignored(client, mock_uow, mock_clock, mock_channel_state_port):
-    settings.WEBHOOK_SECRET = "testsecret"
+def test_webhook_from_me_echo_ignored(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
     # outbox tem o message_id (é echo do bot)
     mock_uow.outbox = MagicMock()
     mock_uow.outbox.exists_by_provider_message_id.return_value = True
@@ -283,4 +330,81 @@ def test_webhook_from_me_echo_ignored(client, mock_uow, mock_clock, mock_channel
     mock_uow.leads.find_by_dedupe_key.assert_not_called()
     mock_uow.conversations.add.assert_not_called()
     mock_uow.conversations.save.assert_not_called()
+    mock_uow.commit.assert_not_called()
+
+
+def test_webhook_malformed_json_returns_400(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
+
+    body = b"not valid json"
+    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid JSON payload"
+
+
+def test_webhook_broadcast_status_ignored(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    """Mensagens de status@broadcast devem ser ignoradas."""
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
+
+    payload = {
+        "event": "MESSAGES-upsert",
+        "instance": "test",
+        "data": {
+            "key": {"id": "msg-broadcast", "remoteJid": "status@broadcast", "fromMe": False},
+            "message": {"conversation": "Status update"},
+        },
+    }
+    body = json.dumps(payload).encode()
+    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["event"] == "broadcast_ignored"
+    # Não deve criar evento de inbound
+    mock_uow.inbound_events.add.assert_not_called()
+    mock_uow.commit.assert_not_called()
+
+
+def test_webhook_broadcast_list_ignored(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    """Mensagens de lista de transmissão (JID terminando com @broadcast) devem ser ignoradas."""
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
+
+    payload = {
+        "event": "MESSAGES-upsert",
+        "instance": "test",
+        "data": {
+            "key": {
+                "id": "msg-broadcast-list",
+                "remoteJid": "5511999999999-123456@broadcast",
+                "fromMe": False,
+            },
+            "message": {"conversation": "Broadcast message"},
+        },
+    }
+    body = json.dumps(payload).encode()
+    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["event"] == "broadcast_ignored"
+    # Não deve criar evento de inbound
+    mock_uow.inbound_events.add.assert_not_called()
     mock_uow.commit.assert_not_called()

@@ -3,7 +3,7 @@ import hmac
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 
 from vendas.bootstrap.settings import settings
@@ -36,6 +36,14 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     return hmac.compare_digest(expected, received)
 
 
+def _is_broadcast_message(remote_jid: str) -> bool:
+    """Verifica se a mensagem é de broadcast (status@broadcast ou lista de transmissão)."""
+    if not remote_jid:
+        return False
+    # Broadcast JIDs terminam com @broadcast ou contêm status@broadcast
+    return remote_jid.endswith("@broadcast") or "status@broadcast" in remote_jid
+
+
 @router.post("", status_code=status.HTTP_200_OK)
 async def receive_whatsapp_webhook(
     request: Request,
@@ -49,14 +57,17 @@ async def receive_whatsapp_webhook(
     # Lê corpo bruto para validação de assinatura
     body = await request.body()
     signature = x_hub_signature_256 or x_evolution_signature
-    if not _verify_signature(body, signature):
+
+    # Valida assinatura quando AUTOMATION_ENABLED=true (produção/staging)
+    # Em desenvolvimento (AUTOMATION_ENABLED=false), aceita sem assinatura para facilitar testes
+    if settings.AUTOMATION_ENABLED and not _verify_signature(body, signature):
         logger.warning("webhook_assinatura_invalida")
-        return {"status": "error", "detail": "Invalid signature"}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
     try:
         payload = await request.json()
     except (TypeError, ValueError):
-        return {"status": "error", "detail": "Invalid JSON payload"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     event_type = payload.get("event")
     instance = payload.get("instance")
@@ -92,6 +103,11 @@ async def receive_whatsapp_webhook(
         message_id = data.get("key", {}).get("id")
         remote_jid = data.get("key", {}).get("remoteJid")
         from_me = data.get("key", {}).get("fromMe", False)
+
+        # Ignora mensagens de broadcast (status@broadcast ou listas de transmissão)
+        if _is_broadcast_message(remote_jid):
+            logger.info("broadcast_ignorado", message_id=message_id, remote_jid=remote_jid)
+            return {"status": "success", "event": "broadcast_ignored"}
 
         # Filtra mensagens de grupos (remoteJid termina com @g.us)
         if remote_jid and remote_jid.endswith("@g.us"):
