@@ -1,17 +1,15 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
     container_name: vendas_postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_USER_PASSWORD: password
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: vendas_db
-      DATABASE_URL_TEST: postgresql://postgres:password@localhost:5432/vendas_db_test
+      DATABASE_URL_TEST: postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/vendas_db_test
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,12 +25,12 @@ services:
     container_name: vendas_evolution
     restart: always
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"
     environment:
       - SERVER_PORT=8080
       - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://postgres:password@postgres:5432/vendas_db
-      - AUTHENTICATION_API_KEY=sua-api-key-global-aqui
+      - DATABASE_CONNECTION_URI=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/evolution_db
+      - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY}
     volumes:
       - evolution_instances:/evolution/instances
     depends_on:
