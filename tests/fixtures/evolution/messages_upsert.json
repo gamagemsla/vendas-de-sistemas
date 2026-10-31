@@ -1,0 +1,14 @@
+{
+  "event": "MESSAGES_UPSERT",
+  "instance": "test-instance",
+  "data": {
+    "key": {
+      "id": "msg-fixture-123",
+      "remoteJid": "5511999999999@s.whatsapp.net",
+      "fromMe": false
+    },
+    "message": {
+      "conversation": "Olá, gostaria de saber mais sobre seus serviços"
+    }
+  }
+}

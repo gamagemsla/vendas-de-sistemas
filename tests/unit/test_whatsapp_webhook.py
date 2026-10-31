@@ -100,6 +100,86 @@ def test_webhook_valid_signature_persists_inbound_event(
     mock_uow.commit.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        "MESSAGES_UPSERT",
+        "MESSAGES-upsert",
+        "messages.upsert",
+    ],
+)
+def test_webhook_accepts_all_message_upsert_variants(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch, event_type
+):
+    """Testa que todas as variantes de MESSAGES_UPSERT são aceitas."""
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
+
+    payload = {
+        "event": event_type,
+        "instance": "test",
+        "data": {
+            "key": {
+                "id": f"msg-{event_type}",
+                "remoteJid": "5511999999999@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {"conversation": "Olá"},
+        },
+    }
+    body = json.dumps(payload).encode()
+    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message_id"] == f"msg-{event_type}"
+    mock_uow.inbound_events.add.assert_called()
+    mock_uow.commit.assert_called()
+    # Reset mocks for next iteration
+    mock_uow.reset_mock()
+    mock_uow.inbound_events = MagicMock()
+    mock_uow.inbound_events.exists_by_provider_id.return_value = False
+    mock_uow.inbound_events.add = MagicMock()
+    mock_uow.leads = MagicMock()
+    mock_uow.leads.find_by_dedupe_key.return_value = None
+    mock_uow.conversations = MagicMock()
+    mock_uow.conversations.get_by_lead_id.return_value = None
+    mock_uow.conversations.add = MagicMock()
+    mock_uow.conversations.save = MagicMock()
+    mock_uow.outbox = MagicMock()
+    mock_uow.outbox.exists_by_provider_message_id.return_value = False
+    mock_uow.commit = MagicMock()
+    mock_uow.__enter__ = MagicMock(return_value=mock_uow)
+    mock_uow.__exit__ = MagicMock(return_value=False)
+
+
+def test_webhook_empty_secret_with_automation_enabled_rejected(
+    client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
+):
+    """WEBHOOK_SECRET vazio com AUTOMATION_ENABLED=true deve retornar 401."""
+    monkeypatch.setattr(settings, "WEBHOOK_SECRET", "")
+    monkeypatch.setattr(settings, "AUTOMATION_ENABLED", True)
+    _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
+
+    payload = {
+        "event": "MESSAGES-upsert",
+        "instance": "test",
+        "data": {
+            "key": {"id": "msg-123", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": False},
+            "message": {"conversation": "Olá"},
+        },
+    }
+    body = json.dumps(payload).encode()
+    headers = {"Content-Type": "application/json"}  # Sem assinatura
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid signature"
+
+
 def test_webhook_invalid_signature_returns_401_when_automation_enabled(
     client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):

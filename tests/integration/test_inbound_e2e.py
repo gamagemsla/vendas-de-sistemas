@@ -50,6 +50,40 @@ def webhook_payload():
     }
 
 
+@pytest.fixture
+def webhook_payload_messages_upsert():
+    """Payload com evento MESSAGES_UPSERT (variante oficial da Evolution API)."""
+    return {
+        "event": "MESSAGES_UPSERT",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "id": "msg-e2e-456",
+                "remoteJid": "5511999999999@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {"conversation": "Olá, gostaria de saber mais sobre seus serviços"},
+        },
+    }
+
+
+@pytest.fixture
+def webhook_payload_messages_dot_upsert():
+    """Payload com evento messages.upsert (variante lowercase)."""
+    return {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "id": "msg-e2e-789",
+                "remoteJid": "5511999999999@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {"conversation": "Olá, gostaria de saber mais sobre seus serviços"},
+        },
+    }
+
+
 def test_inbound_e2e_webhook_to_outbox(client, webhook_payload):
     """
     Teste E2E: Webhook válido → grava evento → worker reivindica via SKIP LOCKED
@@ -67,6 +101,29 @@ def test_inbound_e2e_webhook_to_outbox(client, webhook_payload):
     data = response.json()
     assert data["status"] == "success"
     assert data["message_id"] == "msg-e2e-123"
+
+
+@pytest.mark.parametrize(
+    "payload_fixture,expected_msg_id",
+    [
+        ("webhook_payload_messages_upsert", "msg-e2e-456"),
+        ("webhook_payload_messages_dot_upsert", "msg-e2e-789"),
+    ],
+)
+def test_inbound_e2e_all_message_upsert_variants(client, request, payload_fixture, expected_msg_id):
+    """Testa que todas as variantes de MESSAGES_UPSERT são aceitas no fluxo E2E."""
+    webhook_payload = request.getfixturevalue(payload_fixture)
+    body = json.dumps(webhook_payload).encode()
+    headers = {
+        "X-Hub-Signature-256": _sign(body, "testsecret"),
+        "Content-Type": "application/json",
+    }
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message_id"] == expected_msg_id
 
 
 def test_inbound_e2e_idempotency_duplicate_provider_message_id(client, webhook_payload):

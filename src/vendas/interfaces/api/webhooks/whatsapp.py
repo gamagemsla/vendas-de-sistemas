@@ -32,8 +32,9 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     """
     secret = settings.WEBHOOK_SECRET
     if not secret:
-        # Sem secret configurado: em dev/testes aceita; em produção deve ser configurado.
-        return True
+        # Sem secret configurado: recusa a chamada quando automação está habilitada.
+        # Em desenvolvimento (AUTOMATION_ENABLED=False), a validação é pulada no caller.
+        return False
     if not signature_header:
         return False
     # Espera formato "sha256=<hex>"
@@ -106,7 +107,7 @@ async def receive_whatsapp_webhook(
         return {"status": "success", "event": "qrcode_updated"}
 
     # --- Mensagens ---
-    if event_type != "MESSAGES-upsert":
+    if event_type not in ("MESSAGES_UPSERT", "MESSAGES-upsert", "messages.upsert"):
         return {"status": "ignored", "reason": "event_type_not_handled"}
 
     with uow:
