@@ -20,6 +20,15 @@ services:
     networks:
       - vendas-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: vendas_redis
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - vendas-network
+
   evolution-api:
     image: evoapicloud/evolution-api:v2.1.1
     container_name: vendas_evolution
@@ -31,11 +40,18 @@ services:
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/evolution_db
       - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY}
+      - CACHE_PROVIDER=redis
+      - CACHE_REDIS_SERVER=redis://redis:6379
+      - REDIS_URI=redis://redis:6379
     volumes:
       - evolution_instances:/evolution/instances
     depends_on:
       postgres:
         condition: service_healthy
+        required: true
+      redis:
+        condition: service_started
+        required: true
     networks:
       - vendas-network
 
