@@ -24,8 +24,6 @@ services:
     image: redis:7-alpine
     container_name: vendas_redis
     restart: always
-    ports:
-      - "127.0.0.1:6379:6379"
     networks:
       - vendas-network
 
