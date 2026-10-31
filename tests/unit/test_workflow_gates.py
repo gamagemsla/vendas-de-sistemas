@@ -16,10 +16,6 @@ def test_opt_out_intercepted_before_ai():
     agent = MagicMock()
     clock = MagicMock()
 
-    inbound_mock = MagicMock()
-    inbound_mock.exists_by_provider_id.return_value = False
-    uow.inbound_events = inbound_mock
-
     lead_mock = MagicMock()
     lead_mock.status = "NEW"
     uow.leads.find_by_dedupe_key.return_value = lead_mock
@@ -41,31 +37,6 @@ def test_opt_out_intercepted_before_ai():
     lead_mock.mark_as_opted_out.assert_called_once()
     agent.decide.assert_not_called()
     uow.commit.assert_called()
-
-
-def test_inbound_webhook_deduplication():
-    """Garante que eventos de webhook duplicados (mesmo provider_message_id) são ignorados."""
-    uow = MagicMock()
-    agent = MagicMock()
-    clock = MagicMock()
-
-    uow.inbound_events.exists_by_provider_id.return_value = True
-
-    command = HandleInboundCommand(
-        uow=uow,
-        agent=agent,
-        knowledge_base=MagicMock(),
-        clock=clock,
-        conversation_lock_factory=lambda _session: InMemoryConversationLock(),
-    )
-    command.execute(
-        sender_phone="+5511999999999",
-        message_text="Olá",
-        provider_message_id="msg-duplicada",
-    )
-
-    uow.leads.find_by_dedupe_key.assert_not_called()
-    agent.decide.assert_not_called()
 
 
 def test_schedule_meeting_double_booking_prevention():

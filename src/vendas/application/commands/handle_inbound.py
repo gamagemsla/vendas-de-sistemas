@@ -7,7 +7,6 @@ import structlog
 from vendas.domain.entities.cadence_enrollment import EnrollmentStatus
 from vendas.domain.entities.conversation import Conversation
 from vendas.domain.entities.conversation import Message as ConversationMessage
-from vendas.domain.entities.inbound_event import InboundEvent
 from vendas.domain.entities.suppression_record import SuppressionReason
 from vendas.domain.policies.opt_out_policy import OptOutPolicy
 from vendas.domain.policies.price_policy import PriceValidationPolicy
@@ -46,22 +45,6 @@ class HandleInboundCommand:
         if at is None:
             at = self._clock.now()
         with self._uow as uow:
-            # 1. Verifica duplicação de evento inbound
-            if hasattr(uow, "inbound_events") and uow.inbound_events:
-                if uow.inbound_events.exists_by_provider_id("evolution", provider_message_id):
-                    logger.info(
-                        "evento_inbound_duplicado_ignorado", provider_message_id=provider_message_id
-                    )
-                    return
-                inbound_event = InboundEvent.create(
-                    provider_name="evolution",
-                    provider_event_id=provider_message_id,
-                    event_type="message",
-                    payload={"sender_phone": sender_phone, "message_text": message_text},
-                    at=at,
-                )
-                uow.inbound_events.add(inbound_event)
-
             # 2. Normaliza telefone e trata @lid (contato não identificado)
             try:
                 phone_vo = Phone(sender_phone)
