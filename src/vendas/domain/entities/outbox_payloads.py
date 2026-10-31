@@ -135,12 +135,29 @@ class OperatorTakeoverPayload(BaseModel):
         return v
 
 
+class HandoffNotificationPayload(BaseModel):
+    """Payload para evento HANDOFF_NOTIFICATION."""
+
+    lead_id: str
+    conversation_id: str
+    reason: str | None = None
+    channel: str = "whatsapp"
+
+    @field_validator("lead_id", "conversation_id")
+    @classmethod
+    def _validate_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("campo não pode ser vazio")
+        return v
+
+
 # Mapeamento de event_type para schema
 _PAYLOAD_SCHEMAS: dict[str, type[BaseModel]] = {
     "SEND_AI_RESPONSE": SendAiResponsePayload,
     "SEND_CADENCE_MESSAGE": SendCadenceMessagePayload,
     "SEND_CADENCE_EMAIL": SendCadenceEmailPayload,
     "OPERATOR_TAKEOVER_MESSAGE": OperatorTakeoverPayload,
+    "HANDOFF_NOTIFICATION": HandoffNotificationPayload,
 }
 
 

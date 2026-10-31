@@ -88,3 +88,43 @@ class TestOutboxPayloadValidation:
         payload = {"phone": "+5511999999999", "content": "Oi"}
         with pytest.raises(InvalidOutboxPayloadError):
             validate_outbox_payload("UNKNOWN_EVENT", payload)
+
+    def test_handoff_notification_valid(self) -> None:
+        payload = {
+            "lead_id": "123e4567-e89b-12d3-a456-426614174000",
+            "conversation_id": "conv-123",
+            "reason": "Cliente solicitou atendente",
+            "channel": "whatsapp",
+        }
+        result = validate_outbox_payload("HANDOFF_NOTIFICATION", payload)
+        assert result["lead_id"] == payload["lead_id"]
+        assert result["conversation_id"] == payload["conversation_id"]
+        assert result["reason"] == payload["reason"]
+        assert result["channel"] == payload["channel"]
+
+    def test_handoff_notification_valid_minimal(self) -> None:
+        payload = {
+            "lead_id": "123e4567-e89b-12d3-a456-426614174000",
+            "conversation_id": "conv-123",
+        }
+        result = validate_outbox_payload("HANDOFF_NOTIFICATION", payload)
+        assert result["lead_id"] == payload["lead_id"]
+        assert result["conversation_id"] == payload["conversation_id"]
+        assert result["reason"] is None
+        assert result["channel"] == "whatsapp"
+
+    def test_handoff_notification_invalid_lead_id_empty(self) -> None:
+        payload = {
+            "lead_id": "",
+            "conversation_id": "conv-123",
+        }
+        with pytest.raises(InvalidOutboxPayloadError):
+            validate_outbox_payload("HANDOFF_NOTIFICATION", payload)
+
+    def test_handoff_notification_invalid_conversation_id_empty(self) -> None:
+        payload = {
+            "lead_id": "123e4567-e89b-12d3-a456-426614174000",
+            "conversation_id": "   ",
+        }
+        with pytest.raises(InvalidOutboxPayloadError):
+            validate_outbox_payload("HANDOFF_NOTIFICATION", payload)
