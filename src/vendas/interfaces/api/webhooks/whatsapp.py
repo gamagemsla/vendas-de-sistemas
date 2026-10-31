@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 from typing import Any
 
 import structlog
@@ -64,7 +65,7 @@ async def receive_whatsapp_webhook(
     channel_state_port: ChannelStatePort = channel_state_dep,
 ) -> dict[str, Any]:
     """Endpoint receptor para eventos da Evolution API (inbound messages, status, etc.)."""
-    # Lê corpo bruto para validação de assinatura
+    # Lê corpo bruto para validação de assinatura e desserialização
     body = await request.body()
     signature = x_hub_signature_256 or x_evolution_signature
 
@@ -75,8 +76,8 @@ async def receive_whatsapp_webhook(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
     try:
-        payload = await request.json()
-    except (TypeError, ValueError):
+        payload = json.loads(body.decode("utf-8"))
+    except (TypeError, ValueError, UnicodeDecodeError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     event_type = payload.get("event")
