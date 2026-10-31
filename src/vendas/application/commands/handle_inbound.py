@@ -178,7 +178,7 @@ class HandleInboundCommand:
                     logger.info(
                         "handoff_executado", reason=handoff_reason, original_action=decision.action
                     )
-                    conversation.trigger_handoff(reason=handoff_reason or "handoff", at=at)
+                    conversation.trigger_handoff(at=at)
                     uow.conversations.save(conversation)
                     lead.handoff(assigned_to=None, notes=handoff_reason, at=at)
                     uow.leads.save(lead)
