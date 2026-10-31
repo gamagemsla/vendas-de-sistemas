@@ -31,3 +31,7 @@ logs/
 .continue/
 .coverage
 
+# Distribuição e Empacotamento
+*.egg-info
+src/*.egg-info/
+

@@ -55,4 +55,6 @@ ignore_imports =
     vendas.interfaces.api.app -> vendas.bootstrap.settings
     vendas.interfaces.worker.main -> vendas.bootstrap.logging
     vendas.interfaces.worker.main -> vendas.bootstrap.settings
+    # Ponte de orquestração assíncrona: o worker importa o comando de cadência
+    # para agendar passos via fila, sem acoplar a camada de aplicação ao worker.
     vendas.interfaces.worker.main -> vendas.application.commands.process_cadence_step

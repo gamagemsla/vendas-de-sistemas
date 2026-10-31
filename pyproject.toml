@@ -16,6 +16,7 @@ dependencies = [
     "sqlalchemy>=2.0.27",
     "alembic>=1.13.1",
     "psycopg2-binary>=2.9.9",
+    "psycopg>=3.1.0",
     "streamlit>=1.31.0",
     "httpx>=0.27.0",
     "structlog>=24.1.0",
@@ -66,3 +67,7 @@ disable_error_code = ["call-arg"]
 [[tool.mypy.overrides]]
 module = ["vendas.infrastructure.persistence.orm_models", "vendas.infrastructure.queue.outbox"]
 disable_error_code = ["type-arg", "assignment"]
+
+[tool.pytest.ini_options]
+markers = ["integration: testes de integração com banco de dados real"]
+asyncio_default_fixture_loop_scope = "function"

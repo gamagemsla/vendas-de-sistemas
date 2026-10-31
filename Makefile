@@ -5,6 +5,7 @@ install:
 	pip install -e ".[dev]"
 
 check:
+	python -m compileall -q src tests
 	ruff check src tests
 	ruff format --check src tests
 	mypy src
