@@ -1,6 +1,7 @@
 {
   "event": "MESSAGES_UPSERT",
   "instance": "test-instance",
+  "apikey": "testsecret",
   "data": {
     "key": {
       "id": "msg-fixture-123",

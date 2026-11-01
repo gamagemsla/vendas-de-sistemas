@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import json
 from unittest.mock import MagicMock
 
@@ -62,18 +60,13 @@ def mock_channel_state_port():
     return port
 
 
-def _sign(payload: bytes, secret: str) -> str:
-    digest = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
-    return f"sha256={digest}"
-
-
 def _override_deps(client, uow, clock, channel_state_port):
     client.app.dependency_overrides[get_uow] = lambda: uow
     client.app.dependency_overrides[get_clock] = lambda: clock
     client.app.dependency_overrides[get_channel_state_port] = lambda: channel_state_port
 
 
-def test_webhook_valid_signature_persists_inbound_event(
+def test_webhook_valid_apikey_persists_inbound_event(
     client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
     monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
@@ -83,13 +76,14 @@ def test_webhook_valid_signature_persists_inbound_event(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {"id": "msg-123", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": False},
             "message": {"conversation": "Olá"},
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -118,6 +112,7 @@ def test_webhook_accepts_all_message_upsert_variants(
 
     payload = {
         "event": event_type,
+        "apikey": "testsecret",
         "instance": "test",
         "data": {
             "key": {
@@ -128,8 +123,9 @@ def test_webhook_accepts_all_message_upsert_variants(
             "message": {"conversation": "Olá"},
         },
     }
+    payload["apikey"] = "testsecret"
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -173,14 +169,14 @@ def test_webhook_empty_secret_with_automation_enabled_rejected(
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"Content-Type": "application/json"}  # Sem assinatura
+    headers = {"Content-Type": "application/json"}  # Sem apikey
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid signature"
+    assert response.json()["detail"] == "Invalid apikey"
 
 
-def test_webhook_invalid_signature_returns_401_when_automation_enabled(
+def test_webhook_invalid_apikey_returns_401_when_automation_enabled(
     client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
     monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
@@ -189,36 +185,38 @@ def test_webhook_invalid_signature_returns_401_when_automation_enabled(
 
     payload = {
         "event": "MESSAGES-upsert",
+        "apikey": "wrongsecret",
         "data": {
             "key": {"id": "msg-1", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": False},
             "message": {"conversation": "Oi"},
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": "sha256=invalido", "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid signature"
+    assert response.json()["detail"] == "Invalid apikey"
 
 
-def test_webhook_invalid_signature_allowed_when_automation_disabled(
+def test_webhook_invalid_apikey_allowed_when_automation_disabled(
     client, mock_uow, mock_clock, mock_channel_state_port, monkeypatch
 ):
-    """Em desenvolvimento (AUTOMATION_ENABLED=false), assinatura inválida é aceita."""
+    """Em desenvolvimento (AUTOMATION_ENABLED=false), apikey inválida é aceita."""
     monkeypatch.setattr(settings, "WEBHOOK_SECRET", "testsecret")
     monkeypatch.setattr(settings, "AUTOMATION_ENABLED", False)
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     payload = {
         "event": "MESSAGES-upsert",
+        "apikey": "wrongsecret",
         "data": {
             "key": {"id": "msg-1", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": False},
             "message": {"conversation": "Oi"},
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": "sha256=invalido", "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -236,13 +234,14 @@ def test_webhook_duplicate_message_ignored(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {"id": "msg-123", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": False},
             "message": {"conversation": "Olá"},
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -261,12 +260,20 @@ def test_webhook_group_message_ignored(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {"id": "msg-group", "remoteJid": "5511999999999-123456@g.us", "fromMe": False},
             "message": {"conversation": "Mensagem de grupo"},
         },
     }
-    json.dumps(payload).encode()
+    body = json.dumps(payload).encode()
+    headers = {"Content-Type": "application/json"}
+
+    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ignored"
+    assert data["reason"] == "group_message"
 
 
 def test_webhook_connection_update_close_sets_disconnected(
@@ -279,10 +286,11 @@ def test_webhook_connection_update_close_sets_disconnected(
     payload = {
         "event": "CONNECTION_UPDATE",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {"state": "close"},
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -300,10 +308,11 @@ def test_webhook_connection_update_open_sets_connected(
     payload = {
         "event": "CONNECTION_UPDATE",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {"state": "open"},
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -321,10 +330,11 @@ def test_webhook_qrcode_updated_sets_qr_pending(
     payload = {
         "event": "QRCODE_UPDATED",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {"qrcode": "qr-code-data"},
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -356,6 +366,7 @@ def test_webhook_from_me_takeover_detected(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-takeover",
@@ -366,7 +377,7 @@ def test_webhook_from_me_takeover_detected(
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -393,13 +404,14 @@ def test_webhook_from_me_echo_ignored(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {"id": "msg-echo", "remoteJid": "5511999999999@s.whatsapp.net", "fromMe": True},
             "message": {"conversation": "Echo do bot"},
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -421,7 +433,7 @@ def test_webhook_malformed_json_returns_400(
     _override_deps(client, mock_uow, mock_clock, mock_channel_state_port)
 
     body = b"not valid json"
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 400
@@ -439,13 +451,14 @@ def test_webhook_broadcast_status_ignored(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {"id": "msg-broadcast", "remoteJid": "status@broadcast", "fromMe": False},
             "message": {"conversation": "Status update"},
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200
@@ -468,6 +481,7 @@ def test_webhook_broadcast_list_ignored(
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-broadcast-list",
@@ -478,7 +492,7 @@ def test_webhook_broadcast_list_ignored(
         },
     }
     body = json.dumps(payload).encode()
-    headers = {"X-Hub-Signature-256": _sign(body, "testsecret"), "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 200

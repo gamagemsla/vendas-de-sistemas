@@ -1,10 +1,9 @@
-import hashlib
 import hmac
 import json
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 
 from vendas.bootstrap.settings import settings
@@ -18,34 +17,21 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["Webhooks WhatsApp"])
 
 
-def _verify_signature(body: bytes, signature_header: str | None) -> bool:
-    """Valida assinatura HMAC-SHA256 em tempo constante.
+def _verify_apikey(payload: dict[str, Any]) -> bool:
+    """Valida a apikey enviada no corpo do JSON pela Evolution API.
 
-    NOTA: A Evolution API não documenta oficialmente o método de assinatura de webhook.
-    Este código suporta dois formatos por compatibilidade:
-    - X-Hub-Signature-256: padrão Meta/WhatsApp Cloud API (HMAC-SHA256)
-    - X-Evolution-Signature: header customizado da Evolution API (método NÃO COMPROVADO)
-
-    Se a Evolution API enviar segredo compartilhado simples (sem HMAC), a validação
-    falhará de forma segura (retorna False). Ajustar conforme documentação oficial
-    quando disponível.
+    A Evolution API v2.1.1 envia a chave de API no campo "apikey" do payload JSON.
+    Compara com settings.WEBHOOK_SECRET usando hmac.compare_digest para evitar timing attacks.
     """
     secret = settings.WEBHOOK_SECRET
     if not secret:
         # Sem secret configurado: recusa a chamada quando automação está habilitada.
         # Em desenvolvimento (AUTOMATION_ENABLED=False), a validação é pulada no caller.
         return False
-    if not signature_header:
+    received_apikey = payload.get("apikey")
+    if not received_apikey:
         return False
-    # Espera formato "sha256=<hex>"
-    try:
-        algo, received = signature_header.split("=", 1)
-    except ValueError:
-        return False
-    if algo.lower() != "sha256":
-        return False
-    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, received)
+    return hmac.compare_digest(secret, received_apikey)
 
 
 def _is_broadcast_message(remote_jid: str) -> bool:
@@ -59,27 +45,24 @@ def _is_broadcast_message(remote_jid: str) -> bool:
 @router.post("", status_code=status.HTTP_200_OK)
 async def receive_whatsapp_webhook(
     request: Request,
-    x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
-    x_evolution_signature: str | None = Header(default=None, alias="X-Evolution-Signature"),
     uow: UnitOfWork = uow_dep,
     clock: Clock = clock_dep,
     channel_state_port: ChannelStatePort = channel_state_dep,
 ) -> dict[str, Any]:
     """Endpoint receptor para eventos da Evolution API (inbound messages, status, etc.)."""
-    # Lê corpo bruto para validação de assinatura e desserialização
+    # Lê corpo bruto para desserialização
     body = await request.body()
-    signature = x_hub_signature_256 or x_evolution_signature
-
-    # Valida assinatura quando AUTOMATION_ENABLED=true (produção/staging)
-    # Em desenvolvimento (AUTOMATION_ENABLED=false), aceita sem assinatura para facilitar testes
-    if settings.AUTOMATION_ENABLED and not _verify_signature(body, signature):
-        logger.warning("webhook_assinatura_invalida")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
     try:
         payload = json.loads(body.decode("utf-8"))
     except (TypeError, ValueError, UnicodeDecodeError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+
+    # Valida apikey quando AUTOMATION_ENABLED=true (produção/staging)
+    # Em desenvolvimento (AUTOMATION_ENABLED=false), aceita sem apikey para facilitar testes
+    if settings.AUTOMATION_ENABLED and not _verify_apikey(payload):
+        logger.warning("webhook_apikey_invalida")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid apikey")
 
     event_type = payload.get("event")
     instance = payload.get("instance")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 
 import pytest
@@ -11,12 +9,6 @@ from fastapi.testclient import TestClient
 
 from vendas.bootstrap.settings import settings
 from vendas.interfaces.api.app import create_app
-
-
-def _sign(payload: bytes, secret: str) -> str:
-    """Gera assinatura HMAC-SHA256 no formato sha256=<hex>."""
-    digest = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
-    return f"sha256={digest}"
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +31,7 @@ def webhook_payload():
     return {
         "event": "MESSAGES-upsert",
         "instance": "test-instance",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-e2e-123",
@@ -56,6 +49,7 @@ def webhook_payload_messages_upsert():
     return {
         "event": "MESSAGES_UPSERT",
         "instance": "test-instance",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-e2e-456",
@@ -73,6 +67,7 @@ def webhook_payload_messages_dot_upsert():
     return {
         "event": "messages.upsert",
         "instance": "test-instance",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-e2e-789",
@@ -91,7 +86,6 @@ def test_inbound_e2e_webhook_to_outbox(client, webhook_payload):
     """
     body = json.dumps(webhook_payload).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "testsecret"),
         "Content-Type": "application/json",
     }
 
@@ -115,7 +109,6 @@ def test_inbound_e2e_all_message_upsert_variants(client, request, payload_fixtur
     webhook_payload = request.getfixturevalue(payload_fixture)
     body = json.dumps(webhook_payload).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "testsecret"),
         "Content-Type": "application/json",
     }
 
@@ -132,7 +125,6 @@ def test_inbound_e2e_idempotency_duplicate_provider_message_id(client, webhook_p
     """
     body = json.dumps(webhook_payload).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "testsecret"),
         "Content-Type": "application/json",
     }
 
@@ -160,6 +152,7 @@ def test_inbound_e2e_unknown_lead_opt_out(client):
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test-instance",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-optout-456",
@@ -171,7 +164,6 @@ def test_inbound_e2e_unknown_lead_opt_out(client):
     }
     body = json.dumps(payload).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "testsecret"),
         "Content-Type": "application/json",
     }
 
@@ -182,37 +174,22 @@ def test_inbound_e2e_unknown_lead_opt_out(client):
     assert data["message_id"] == "msg-optout-456"
 
 
-def test_inbound_e2e_evolution_signature_header(client, webhook_payload):
+def test_inbound_e2e_invalid_apikey_rejected(client, webhook_payload):
     """
-    Valida que o header X-Evolution-Signature também é aceito (compatibilidade).
-    Evolution API pode enviar assinatura em header customizado.
-    """
-    body = json.dumps(webhook_payload).encode()
-    headers = {
-        "X-Evolution-Signature": _sign(body, "testsecret"),
-        "Content-Type": "application/json",
-    }
-
-    response = client.post("/webhooks/whatsapp", content=body, headers=headers)
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "success"
-    assert data["message_id"] == "msg-e2e-123"
-
-
-def test_inbound_e2e_invalid_signature_rejected(client, webhook_payload):
-    """
-    Valida que assinatura inválida é rejeitada quando AUTOMATION_ENABLED=true.
+    Valida que apikey inválida é rejeitada quando AUTOMATION_ENABLED=true.
     """
     body = json.dumps(webhook_payload).encode()
+    # Modifica o payload para ter apikey errada
+    payload_with_wrong_key = webhook_payload.copy()
+    payload_with_wrong_key["apikey"] = "wrongsecret"
+    body = json.dumps(payload_with_wrong_key).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "wrongsecret"),
         "Content-Type": "application/json",
     }
 
     response = client.post("/webhooks/whatsapp", content=body, headers=headers)
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid signature"
+    assert response.json()["detail"] == "Invalid apikey"
 
 
 def test_inbound_e2e_broadcast_ignored(client):
@@ -222,6 +199,7 @@ def test_inbound_e2e_broadcast_ignored(client):
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test-instance",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-broadcast-789",
@@ -233,7 +211,6 @@ def test_inbound_e2e_broadcast_ignored(client):
     }
     body = json.dumps(payload).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "testsecret"),
         "Content-Type": "application/json",
     }
 
@@ -251,6 +228,7 @@ def test_inbound_e2e_human_takeover_detected(client):
     payload = {
         "event": "MESSAGES-upsert",
         "instance": "test-instance",
+        "apikey": "testsecret",
         "data": {
             "key": {
                 "id": "msg-takeover-999",
@@ -262,7 +240,6 @@ def test_inbound_e2e_human_takeover_detected(client):
     }
     body = json.dumps(payload).encode()
     headers = {
-        "X-Hub-Signature-256": _sign(body, "testsecret"),
         "Content-Type": "application/json",
     }
 

@@ -32,14 +32,14 @@ def create_tables():
 
     from alembic import command
 
-    engine = create_engine(settings.DATABASE_URL)
+    engine = create_engine(settings.DATABASE_URL, isolation_level="AUTOCOMMIT")
     # Trava de segurança: só operar em banco cujo nome termina com "_test"
     assert engine.url.database and engine.url.database.endswith("_test"), (
         f"ABORTADO: Tentativa de operacao no banco '{engine.url.database}'. "
         "O banco DEVE terminar em '_test'!"
     )
     # Limpa o schema public antes de aplicar as migrations
-    with engine.begin() as conn:
+    with engine.connect() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
     alembic_cfg = Config("alembic.ini")
     # Aplica todas as migrations até head
